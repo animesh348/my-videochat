@@ -1,160 +1,148 @@
 // ── STATE ──────────────────────────────────────────────────────
-const ICE_SERVERS = {
+const ICE = {
   iceServers: [
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun1.l.google.com:19302" },
-    { urls: "stun:stun2.l.google.com:19302" },
-    { urls: "stun:stun3.l.google.com:19302" }
+    { urls: "stun:stun2.l.google.com:19302" }
   ]
 };
 
-let ws, pc, localStream;
+let ws, pc, stream;
 let roomId = null, myRole = null;
-let micEnabled = true, camEnabled = true;
-let sessionActive = false;
-let strangerCount = 0;
-let sessionStart = null;
-let timerInterval = null;
-let pipExpanded = false;
-let reconnectAttempts = 0;
+let micOn = true, camOn = true;
+let active = false;
+let metCount = 0;
+let timerStart = null, timerInterval = null;
+let retries = 0;
 
-// ── INIT ────────────────────────────────────────────────────────
+// ── BOOT ────────────────────────────────────────────────────────
 window.addEventListener('load', async () => {
   try {
-    localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-    document.getElementById('local').srcObject = localStream;
+    stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    document.getElementById('local').srcObject = stream;
     setStatus('idle', 'Ready');
-  } catch (err) {
-    showToast('⚠️ Camera/mic access denied. Please allow permissions.');
+  } catch {
+    toast('⚠️ Camera/mic denied — check browser permissions');
     setStatus('idle', 'No camera');
   }
 });
 
-// ── WEBSOCKET URL ────────────────────────────────────────────────
-function getWsUrl() {
-  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  return `${proto}://${location.host}/ws`;
-}
+// ── WS URL ──────────────────────────────────────────────────────
+const wsUrl = () => `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
 
-// ── SESSION CONTROL ─────────────────────────────────────────────
+// ── SESSION ──────────────────────────────────────────────────────
 function startSession() {
-  if (!localStream) { showToast('Camera not available.'); return; }
-  sessionActive = true;
-  reconnectAttempts = 0;
+  if (!stream) { toast('Camera not available'); return; }
+  active = true; retries = 0;
   document.getElementById('startBtn').style.display = 'none';
-  document.getElementById('stopBtn').style.display = 'flex';
+  document.getElementById('stopBtn').style.display  = 'flex';
   document.getElementById('nextBtn').disabled = false;
   connect();
 }
 
 function stopSession() {
-  sessionActive = false;
+  active = false;
   hangup();
-  if (ws) { try { ws.close(); } catch(e){} ws = null; }
+  if (ws) { try { ws.close(); } catch {} ws = null; }
   stopTimer();
   document.getElementById('startBtn').style.display = 'flex';
-  document.getElementById('stopBtn').style.display = 'none';
+  document.getElementById('stopBtn').style.display  = 'none';
   document.getElementById('nextBtn').disabled = true;
-  showWaiting('Click "Start" to find someone');
+  showOverlay('Click "Start" to find someone');
   setStatus('idle', 'Disconnected');
-  addSystemMsg('Session ended.');
-  document.getElementById('infoStatus').textContent = 'Idle';
-  document.getElementById('infoDuration').textContent = '—';
-  document.getElementById('infoConn').textContent = '—';
+  sysMsg('Session ended.');
+  setInfo('Idle', '—', '—');
 }
 
 function nextMatch() {
-  if (!sessionActive) return;
+  if (!active) return;
   hangup();
-  addSystemMsg('Finding next stranger...');
+  sysMsg('Finding next stranger...');
   connect();
 }
 
+// ── CONNECT ──────────────────────────────────────────────────────
 function connect() {
-  if (ws) { try { ws.close(); } catch(e){} ws = null; }
-  showWaiting('Looking for someone...');
+  if (ws) { try { ws.close(); } catch {} ws = null; }
+  showOverlay('Looking for someone...');
   setStatus('waiting', 'Searching...');
 
-  try { ws = new WebSocket(getWsUrl()); }
-  catch(e) {
-    if (sessionActive) setTimeout(connect, 3000);
+  try { ws = new WebSocket(wsUrl()); } catch {
+    if (active) setTimeout(connect, 3000);
     return;
   }
 
-  ws.onopen = () => { reconnectAttempts = 0; setStatus('waiting', 'Waiting for match...'); };
+  ws.onopen = () => { retries = 0; setStatus('waiting', 'Waiting...'); };
 
   ws.onmessage = async ({ data }) => {
-    let msg; try { msg = JSON.parse(data); } catch(e) { return; }
+    let m; try { m = JSON.parse(data); } catch { return; }
 
-    if (msg.type === 'waiting') { showWaiting('Waiting for a stranger...'); setStatus('waiting', 'Matching...'); }
+    if (m.type === 'waiting') { showOverlay('Waiting for a stranger...'); }
 
-    if (msg.type === 'matched') {
-      roomId = msg.room; myRole = msg.role;
-      strangerCount++;
-      document.getElementById('infoCount').textContent = strangerCount;
-      hideWaiting();
+    if (m.type === 'matched') {
+      roomId = m.room; myRole = m.role;
+      metCount++;
+      updateCounters();
+      hideOverlay();
       setStatus('connected', 'Connected');
-      addSystemMsg('Connected to a stranger! Say hello 👋');
+      sysMsg('Connected to a stranger! Say hello 👋');
       document.getElementById('nameTag').classList.add('visible');
       startTimer();
-      document.getElementById('infoStatus').textContent = 'Connected';
-      document.getElementById('infoConn').textContent = 'WebRTC P2P';
+      setInfo('Connected', null, 'WebRTC P2P');
       await startCall();
     }
 
-    if (msg.type === 'offer') {
-      await setupPC();
-      await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
-      const ans = await pc.createAnswer();
-      await pc.setLocalDescription(ans);
-      send({ type: 'answer', sdp: ans, room: roomId });
-    }
+    if (m.type === 'offer')  { await onOffer(m); }
+    if (m.type === 'answer' && pc) { await pc.setRemoteDescription(new RTCSessionDescription(m.sdp)); }
+    if (m.type === 'ice' && pc)    { try { await pc.addIceCandidate(new RTCIceCandidate(m.candidate)); } catch {} }
+    if (m.type === 'chat')   { addMsg(m.text, 'them'); }
 
-    if (msg.type === 'answer' && pc) await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
-    if (msg.type === 'ice' && pc) { try { await pc.addIceCandidate(new RTCIceCandidate(msg.candidate)); } catch(e){} }
-    if (msg.type === 'chat') addChatMsg(msg.text, 'them');
-
-    if (msg.type === 'peer_disconnected') {
-      addSystemMsg('Stranger disconnected.');
+    if (m.type === 'peer_disconnected') {
+      sysMsg('Stranger disconnected.');
       setStatus('waiting', 'Disconnected');
       document.getElementById('nameTag').classList.remove('visible');
       document.getElementById('remote').srcObject = null;
       stopTimer();
       if (pc) { pc.close(); pc = null; }
-      document.getElementById('infoStatus').textContent = 'Stranger left';
-      document.getElementById('infoConn').textContent = '—';
-      if (sessionActive) setTimeout(() => { addSystemMsg('Finding next stranger...'); connect(); }, 1500);
+      setInfo('Stranger left', null, '—');
+      if (active) setTimeout(() => { sysMsg('Finding next...'); connect(); }, 1500);
     }
   };
 
-  ws.onerror = () => { if (sessionActive) showToast('Connection error. Retrying...'); };
+  ws.onerror = () => { if (active) toast('Connection error, retrying...'); };
   ws.onclose = () => {
-    if (sessionActive) {
-      reconnectAttempts++;
-      setTimeout(() => { if (sessionActive) connect(); }, Math.min(1000 * reconnectAttempts, 5000));
-    }
+    if (active) { retries++; setTimeout(() => { if (active) connect(); }, Math.min(retries * 1000, 5000)); }
   };
 }
 
-async function setupPC() {
-  if (pc) { pc.close(); }
-  pc = new RTCPeerConnection(ICE_SERVERS);
-  localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+// ── WEBRTC ──────────────────────────────────────────────────────
+async function makePC() {
+  if (pc) { pc.close(); pc = null; }
+  pc = new RTCPeerConnection(ICE);
+  stream.getTracks().forEach(t => pc.addTrack(t, stream));
   pc.ontrack = e => { document.getElementById('remote').srcObject = e.streams[0]; };
-  pc.onicecandidate = e => { if (e.candidate) send({ type: 'ice', candidate: e.candidate, room: roomId }); };
+  pc.onicecandidate = e => { if (e.candidate) send({ type:'ice', candidate: e.candidate, room: roomId }); };
   pc.onconnectionstatechange = () => {
-    if (pc.connectionState === 'connected') { document.getElementById('infoConn').textContent = 'P2P Direct ✓'; showToast('✅ Video connected!'); }
-    if (pc.connectionState === 'failed' && sessionActive) setTimeout(connect, 1000);
+    if (pc.connectionState === 'connected') { setInfo(null, null, 'P2P Direct ✓'); toast('✅ Video connected!'); }
+    if (pc.connectionState === 'failed' && active) setTimeout(connect, 1000);
   };
 }
 
 async function startCall() {
-  await setupPC();
+  await makePC();
   if (myRole === 'caller') {
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
-    send({ type: 'offer', sdp: offer, room: roomId });
+    send({ type:'offer', sdp: offer, room: roomId });
   }
+}
+
+async function onOffer(m) {
+  await makePC();
+  await pc.setRemoteDescription(new RTCSessionDescription(m.sdp));
+  const ans = await pc.createAnswer();
+  await pc.setLocalDescription(ans);
+  send({ type:'answer', sdp: ans, room: roomId });
 }
 
 function hangup() {
@@ -163,140 +151,192 @@ function hangup() {
   document.getElementById('remote').srcObject = null;
   document.getElementById('nameTag').classList.remove('visible');
   stopTimer();
+  showOverlay('Looking for someone...');
 }
 
-function send(msg) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg)); }
+function send(m) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(m)); }
 
 // ── CHAT ────────────────────────────────────────────────────────
 function sendChat() {
-  const input = document.getElementById('chatInput');
-  const text = input.value.trim();
-  if (!text) return;
-  if (!roomId) { showToast('Connect to someone first!'); return; }
-  send({ type: 'chat', text, room: roomId });
-  addChatMsg(text, 'me');
-  input.value = ''; input.style.height = 'auto';
+  const el = document.getElementById('chatIn');
+  const txt = el.value.trim();
+  if (!txt || !roomId) { if (!roomId) toast('Connect first!'); return; }
+  send({ type:'chat', text: txt, room: roomId });
+  addMsg(txt, 'me');
+  el.value = ''; el.style.height = 'auto';
 }
 
-function addChatMsg(text, who) {
-  const box = document.getElementById('chatMessages');
-  const div = document.createElement('div');
-  div.className = `msg ${who}`; div.textContent = text;
-  box.appendChild(div); box.scrollTop = box.scrollHeight;
-  if (!document.getElementById('tab-chat').classList.contains('active') && who === 'them') showToast('💬 New message!');
+function sendMChat() {
+  const el = document.getElementById('mChatIn');
+  const txt = el.value.trim();
+  if (!txt || !roomId) { if (!roomId) toast('Connect first!'); return; }
+  send({ type:'chat', text: txt, room: roomId });
+  addMsg(txt, 'me');
+  el.value = ''; el.style.height = 'auto';
 }
 
-function addSystemMsg(text) {
-  const box = document.getElementById('chatMessages');
-  const div = document.createElement('div');
-  div.className = 'msg system'; div.textContent = text;
-  box.appendChild(div); box.scrollTop = box.scrollHeight;
+function addMsg(text, who) {
+  // add to both desktop and mobile message lists
+  ['msgs', 'mmsgs'].forEach(id => {
+    const box = document.getElementById(id);
+    if (!box) return;
+    const d = document.createElement('div');
+    d.className = `msg ${who}`; d.textContent = text;
+    box.appendChild(d); box.scrollTop = box.scrollHeight;
+  });
+  if (who === 'them') toast('💬 New message!');
 }
 
-function handleChatKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); } }
-function autoResize(el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 100) + 'px'; }
+function sysMsg(text) {
+  ['msgs', 'mmsgs'].forEach(id => {
+    const box = document.getElementById(id);
+    if (!box) return;
+    const d = document.createElement('div');
+    d.className = 'msg sys'; d.textContent = text;
+    box.appendChild(d); box.scrollTop = box.scrollHeight;
+  });
+}
+
+function handleKey(e)  { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); } }
+function handleMKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMChat(); } }
+function resize(el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 100) + 'px'; }
 
 // ── MEDIA ────────────────────────────────────────────────────────
 function toggleMic() {
-  if (!localStream) return;
-  micEnabled = !micEnabled;
-  localStream.getAudioTracks().forEach(t => t.enabled = micEnabled);
+  if (!stream) return;
+  micOn = !micOn;
+  stream.getAudioTracks().forEach(t => t.enabled = micOn);
   const btn = document.getElementById('micBtn');
-  const icon = document.getElementById('micIcon');
-  if (micEnabled) {
-    btn.classList.replace('btn-muted-state', 'btn-ghost');
-    icon.innerHTML = '<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>';
-    showToast('🎙️ Mic on');
+  const ico = document.getElementById('micIco');
+  if (micOn) {
+    btn.classList.replace('muted-state', 'ghost');
+    ico.innerHTML = '<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>';
+    toast('🎙️ Mic on');
   } else {
-    btn.classList.replace('btn-ghost', 'btn-muted-state');
-    icon.innerHTML = '<line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>';
-    showToast('🔇 Mic muted');
+    btn.classList.replace('ghost', 'muted-state');
+    ico.innerHTML = '<line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>';
+    toast('🔇 Mic muted');
   }
 }
 
-function toggleCamera() {
-  if (!localStream) return;
-  camEnabled = !camEnabled;
-  localStream.getVideoTracks().forEach(t => t.enabled = camEnabled);
+function toggleCam() {
+  if (!stream) return;
+  camOn = !camOn;
+  stream.getVideoTracks().forEach(t => t.enabled = camOn);
   const btn = document.getElementById('camBtn');
-  if (camEnabled) { btn.classList.replace('btn-muted-state', 'btn-ghost'); showToast('📷 Camera on'); }
-  else { btn.classList.replace('btn-ghost', 'btn-muted-state'); showToast('📷 Camera off'); }
+  if (camOn) { btn.classList.replace('muted-state', 'ghost'); toast('📷 Camera on'); }
+  else        { btn.classList.replace('ghost', 'muted-state'); toast('📷 Camera off'); }
 }
 
-function toggleFullscreen() {
-  const stage = document.querySelector('.video-stage');
-  if (!document.fullscreenElement) stage.requestFullscreen().catch(() => showToast('Fullscreen not supported'));
+function goFullscreen() {
+  const el = document.querySelector('.video-wrap');
+  if (!document.fullscreenElement) el.requestFullscreen().catch(() => toast('Fullscreen not supported'));
   else document.exitFullscreen();
 }
 
-async function togglePiP() {
+async function goPiP() {
+  const v = document.getElementById('remote');
   try {
-    const video = document.getElementById('remote');
     if (document.pictureInPictureElement) await document.exitPictureInPicture();
-    else if (video.srcObject) await video.requestPictureInPicture();
-    else showToast('No remote video to pop out');
-  } catch(e) { showToast('PiP not supported in this browser'); }
-}
-
-function expandPip() {
-  pipExpanded = !pipExpanded;
-  document.getElementById('localPip').classList.toggle('pip-expanded', pipExpanded);
+    else if (v.srcObject) await v.requestPictureInPicture();
+    else toast('No remote video yet');
+  } catch { toast('PiP not supported here'); }
 }
 
 // ── TABS ────────────────────────────────────────────────────────
 function switchTab(name) {
-  document.querySelectorAll('.tab').forEach((t, i) => {
-    t.classList.toggle('active', (i === 0 && name === 'chat') || (i === 1 && name === 'info'));
-  });
-  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-  document.getElementById(`tab-${name}`).classList.add('active');
+  document.querySelectorAll('.side-panel .tab').forEach((t,i) =>
+    t.classList.toggle('active', (i===0 && name==='chat') || (i===1 && name==='opts')));
+  ['pane-chat','pane-opts'].forEach(id =>
+    document.getElementById(id).classList.toggle('active', id === `pane-${name}`));
 }
 
-function toggleMobileChat() {
-  document.querySelector('.side-panel').classList.toggle('mobile-open');
+function switchMobileTab(name) {
+  document.querySelectorAll('.mobile-drawer .tab').forEach((t,i) =>
+    t.classList.toggle('active', (i===0 && name==='chat') || (i===1 && name==='opts')));
+  ['mpane-chat','mpane-opts'].forEach(id =>
+    document.getElementById(id).classList.toggle('active', id === `mpane-${name}`));
+}
+
+// ── DRAWER (mobile) ──────────────────────────────────────────────
+function toggleDrawer() {
+  const d = document.getElementById('drawer');
+  const b = document.getElementById('backdrop');
+  const open = d.classList.toggle('open');
+  b.style.display = open ? 'block' : 'none';
+}
+function closeDrawer() {
+  document.getElementById('drawer').classList.remove('open');
+  document.getElementById('backdrop').style.display = 'none';
 }
 
 // ── TIMER ────────────────────────────────────────────────────────
 function startTimer() {
-  sessionStart = Date.now(); stopTimer();
+  timerStart = Date.now(); stopTimer();
   timerInterval = setInterval(() => {
-    const s = Math.floor((Date.now() - sessionStart) / 1000);
+    const s = Math.floor((Date.now() - timerStart) / 1000);
     const t = `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
     document.getElementById('timerDisplay').textContent = t;
-    document.getElementById('infoDuration').textContent = t;
+    document.getElementById('iDur').textContent = t;
+    const miDur = document.getElementById('miDur');
+    if (miDur) miDur.textContent = t;
   }, 1000);
 }
-function stopTimer() { clearInterval(timerInterval); document.getElementById('timerDisplay').textContent = '00:00'; }
+function stopTimer() {
+  clearInterval(timerInterval);
+  document.getElementById('timerDisplay').textContent = '00:00';
+}
 
-// ── STATUS ────────────────────────────────────────────────────────
+// ── STATUS / INFO ────────────────────────────────────────────────
 function setStatus(type, text) {
   const dot = document.getElementById('statusDot');
   dot.className = 'status-dot';
   if (type === 'connected') dot.classList.add('connected');
-  if (type === 'waiting') dot.classList.add('waiting');
+  if (type === 'waiting')   dot.classList.add('waiting');
   document.getElementById('statusText').textContent = text;
 }
 
-function showWaiting(msg) { document.getElementById('waiting-overlay').classList.remove('hidden'); document.getElementById('waitingMsg').textContent = msg; }
-function hideWaiting() { document.getElementById('waiting-overlay').classList.add('hidden'); }
+function setInfo(status, duration, conn) {
+  if (status)   { document.getElementById('iStatus').textContent = status; const m = document.getElementById('miStatus'); if(m) m.textContent = status; }
+  if (duration) { document.getElementById('iDur').textContent = duration; }
+  if (conn)     { document.getElementById('iConn').textContent = conn; }
+}
+
+function updateCounters() {
+  document.getElementById('iCount').textContent = metCount;
+  const m = document.getElementById('miCount'); if(m) m.textContent = metCount;
+}
+
+// ── OVERLAY ──────────────────────────────────────────────────────
+function showOverlay(msg) {
+  document.getElementById('overlay').classList.remove('hidden');
+  document.getElementById('overlayMsg').textContent = msg;
+}
+function hideOverlay() { document.getElementById('overlay').classList.add('hidden'); }
 
 // ── REPORT / BLOCK ────────────────────────────────────────────────
-function openReport() { if (!roomId) { showToast('No active session'); return; } document.getElementById('reportModal').classList.add('open'); }
+function openReport()  { if (!roomId) { toast('No active session'); return; } document.getElementById('reportModal').classList.add('open'); }
 function closeReport() { document.getElementById('reportModal').classList.remove('open'); }
 function submitReport() {
   const reason = document.getElementById('reportReason').value;
-  if (!reason) { showToast('Please select a reason'); return; }
-  fetch('/report', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ room: roomId, reason, details: document.getElementById('reportDetails').value }) }).catch(()=>{});
-  closeReport(); showToast('✅ Report submitted.'); addSystemMsg('You reported this user.');
-  setTimeout(() => nextMatch(), 800);
+  if (!reason) { toast('Select a reason first'); return; }
+  fetch('/report', { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ room: roomId, reason, details: document.getElementById('reportDetails').value })
+  }).catch(()=>{});
+  closeReport(); toast('✅ Reported. Skipping...'); sysMsg('You reported this user.');
+  setTimeout(nextMatch, 800);
 }
-function blockUser() { if (!roomId) { showToast('No active session'); return; } showToast('🚫 Blocked. Finding next...'); addSystemMsg('You blocked this user.'); setTimeout(() => nextMatch(), 800); }
+function blockUser() {
+  if (!roomId) { toast('No active session'); return; }
+  toast('🚫 Blocked. Skipping...'); sysMsg('You blocked this user.');
+  setTimeout(nextMatch, 800);
+}
 
 // ── TOAST ────────────────────────────────────────────────────────
-let toastTimer;
-function showToast(msg) {
-  const t = document.getElementById('toast');
-  t.textContent = msg; t.classList.add('show');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove('show'), 2800);
+let toastT;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(toastT);
+  toastT = setTimeout(() => el.classList.remove('show'), 2800);
 }
