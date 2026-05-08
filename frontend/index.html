@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>NexTalk — Meet Strangers</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0a0a0f;
+      --surface:   #111118;
+      --panel:     #16161f;
+      --border:    rgba(255,255,255,0.07);
+      --accent:    #6c63ff;
+      --accent2:   #ff6584;
+      --green:     #22c55e;
+      --red:       #ef4444;
+      --amber:     #f59e0b;
+      --text:      #f0f0f8;
+      --muted:     #6b6b88;
+      --chat-me:   #6c63ff;
+      --chat-them: #1e1e2e;
+      --radius:    12px;
+      --font-head: 'Syne', sans-serif;
+      --font-body: 'DM Sans', sans-serif;
+    }
+
+    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font-body); overflow: hidden; }
+
+    /* ── TOP BAR ── */
+    header {
+      height: 52px;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      z-index: 10;
+    }
+    .logo { font-family: var(--font-head); font-size: 20px; font-weight: 800; letter-spacing: -0.5px; }
+    .logo span { color: var(--accent); }
+    .status-pill {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 12px; color: var(--muted);
+      background: rgba(255,255,255,0.04);
+      padding: 4px 10px; border-radius: 999px;
+      border: 1px solid var(--border);
+    }
+    .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); transition: background 0.3s; }
+    .status-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .status-dot.waiting   { background: var(--amber); animation: pulse 1.2s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+    /* ── MAIN LAYOUT ── */
+    .app {
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      height: calc(100vh - 52px);
+    }
+
+    /* ── VIDEO SECTION ── */
+    .video-section {
+      display: flex; flex-direction: column;
+      background: var(--bg);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .video-stage {
+      flex: 1;
+      position: relative;
+      background: #000;
+      overflow: hidden;
+    }
+
+    /* Remote video — full stage */
+    #remote {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      display: block;
+      background: #000;
+      transition: opacity 0.4s;
+    }
+
+    /* Waiting overlay */
+    #waiting-overlay {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 16px;
+      background: var(--surface);
+      z-index: 5;
+    }
+    #waiting-overlay.hidden { display: none; }
+    .waiting-ring {
+      width: 64px; height: 64px;
+      border-radius: 50%;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #waiting-overlay p { font-family: var(--font-head); font-size: 15px; color: var(--muted); }
+    #waiting-overlay .tip { font-size: 12px; color: var(--muted); opacity: 0.6; }
+
+    /* PiP local video */
+    .local-pip {
+      position: absolute;
+      bottom: 16px; left: 16px;
+      width: 160px; height: 100px;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 2px solid rgba(108,99,255,0.5);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+      cursor: move;
+      z-index: 10;
+      transition: width 0.2s, height 0.2s;
+    }
+    .local-pip:hover { border-color: var(--accent); }
+    .local-pip.pip-expanded { width: 240px; height: 150px; }
+    #local { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+
+    /* PiP controls */
+    .pip-actions {
+      position: absolute; top: 4px; right: 4px;
+      display: flex; gap: 4px;
+      opacity: 0; transition: opacity 0.2s;
+    }
+    .local-pip:hover .pip-actions { opacity: 1; }
+    .pip-btn {
+      width: 22px; height: 22px;
+      border-radius: 6px;
+      background: rgba(0,0,0,0.7);
+      border: none; color: #fff;
+      font-size: 11px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    /* Remote name tag */
+    .name-tag {
+      position: absolute; top: 16px; left: 16px;
+      background: rgba(0,0,0,0.5);
+      backdrop-filter: blur(8px);
+      padding: 4px 10px; border-radius: 999px;
+      font-size: 12px; color: var(--text);
+      border: 1px solid var(--border);
+      z-index: 10;
+      opacity: 0; transition: opacity 0.3s;
+    }
+    .name-tag.visible { opacity: 1; }
+
+    /* ── CONTROLS BAR ── */
+    .controls {
+      height: 72px;
+      display: flex; align-items: center; justify-content: center;
+      gap: 10px;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      padding: 0 16px;
+      flex-shrink: 0;
+    }
+
+    .btn {
+      display: flex; align-items: center; justify-content: center;
+      gap: 6px;
+      height: 44px;
+      padding: 0 18px;
+      border-radius: 999px;
+      border: none; cursor: pointer;
+      font-family: var(--font-body);
+      font-size: 13px; font-weight: 500;
+      transition: all 0.18s;
+      outline: none;
+      white-space: nowrap;
+    }
+    .btn svg { width: 16px; height: 16px; flex-shrink: 0; }
+    .btn-icon { width: 44px; height: 44px; padding: 0; border-radius: 50%; }
+
+    .btn-primary   { background: var(--accent);  color: #fff; }
+    .btn-primary:hover { background: #5a52e0; transform: scale(1.04); }
+
+    .btn-danger    { background: var(--red);    color: #fff; }
+    .btn-danger:hover { background: #c53030; transform: scale(1.04); }
+
+    .btn-ghost     { background: rgba(255,255,255,0.06); color: var(--text); border: 1px solid var(--border); }
+    .btn-ghost:hover { background: rgba(255,255,255,0.1); transform: scale(1.04); }
+
+    .btn-warn      { background: rgba(245,158,11,0.15); color: var(--amber); border: 1px solid rgba(245,158,11,0.3); }
+    .btn-warn:hover { background: rgba(245,158,11,0.25); }
+
+    .btn-muted-state { background: rgba(239,68,68,0.15); color: var(--red); border: 1px solid rgba(239,68,68,0.3); }
+
+    .btn-next { background: linear-gradient(135deg, var(--accent), #9b7dff); color: #fff; font-weight: 600; padding: 0 24px; }
+    .btn-next:hover { transform: scale(1.05); box-shadow: 0 4px 20px rgba(108,99,255,0.4); }
+
+    .divider { width: 1px; height: 28px; background: var(--border); margin: 0 4px; }
+
+    /* Fullscreen btn */
+    .btn-fullscreen { margin-left: auto; }
+
+    /* ── RIGHT PANEL ── */
+    .side-panel {
+      display: flex; flex-direction: column;
+      background: var(--panel);
+      border-left: 1px solid var(--border);
+    }
+
+    .panel-tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+    }
+    .tab {
+      flex: 1; padding: 14px;
+      text-align: center; font-size: 13px; font-weight: 500;
+      color: var(--muted); cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s;
+    }
+    .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+
+    .tab-content { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+    .tab-content.active { display: flex; }
+
+    /* Chat */
+    .chat-messages {
+      flex: 1; overflow-y: auto;
+      padding: 14px;
+      display: flex; flex-direction: column;
+      gap: 8px;
+      scroll-behavior: smooth;
+    }
+    .chat-messages::-webkit-scrollbar { width: 4px; }
+    .chat-messages::-webkit-scrollbar-track { background: transparent; }
+    .chat-messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+    .msg {
+      max-width: 82%;
+      padding: 8px 12px;
+      border-radius: 14px;
+      font-size: 13px;
+      line-height: 1.5;
+      word-break: break-word;
+      animation: msgIn 0.18s ease;
+    }
+    @keyframes msgIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+    .msg.me    { background: var(--chat-me); color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
+    .msg.them  { background: var(--chat-them); color: var(--text); align-self: flex-start; border-bottom-left-radius: 4px; border: 1px solid var(--border); }
+    .msg.system { background: transparent; color: var(--muted); font-size: 11px; align-self: center; text-align: center; border: none; padding: 2px 0; }
+
+    .chat-input-area {
+      padding: 12px;
+      border-top: 1px solid var(--border);
+      display: flex; gap: 8px; align-items: flex-end;
+    }
+    .chat-input {
+      flex: 1;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      font-family: var(--font-body);
+      font-size: 13px;
+      padding: 8px 12px;
+      resize: none;
+      max-height: 100px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .chat-input:focus { border-color: var(--accent); }
+    .chat-input::placeholder { color: var(--muted); }
+    .send-btn {
+      width: 36px; height: 36px;
+      border-radius: 10px;
+      background: var(--accent);
+      border: none; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      transition: background 0.2s, transform 0.15s;
+    }
+    .send-btn:hover { background: #5a52e0; transform: scale(1.06); }
+
+    /* Info panel */
+    .info-panel { padding: 16px; gap: 10px; flex-direction: column; }
+    .info-card {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px;
+    }
+    .info-card h4 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 8px; font-family: var(--font-head); }
+    .info-card p  { font-size: 13px; color: var(--text); line-height: 1.6; }
+    .info-stat    { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); }
+    .info-stat:last-child { border: none; }
+    .info-stat span:first-child { font-size: 12px; color: var(--muted); }
+    .info-stat span:last-child  { font-size: 12px; font-weight: 500; color: var(--text); }
+
+    .action-group { display: flex; flex-direction: column; gap: 8px; }
+    .action-btn {
+      display: flex; align-items: center; gap: 10px;
+      padding: 11px 14px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.03);
+      color: var(--text);
+      font-family: var(--font-body);
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.18s;
+      width: 100%;
+      text-align: left;
+    }
+    .action-btn:hover { background: rgba(255,255,255,0.07); }
+    .action-btn.danger { color: var(--red); border-color: rgba(239,68,68,0.2); }
+    .action-btn.danger:hover { background: rgba(239,68,68,0.08); }
+    .action-btn.warn   { color: var(--amber); border-color: rgba(245,158,11,0.2); }
+    .action-btn.warn:hover { background: rgba(245,158,11,0.08); }
+
+    /* Toast */
+    #toast {
+      position: fixed; bottom: 24px; left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 20px;
+      font-size: 13px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      z-index: 999;
+      transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
+      pointer-events: none;
+    }
+    #toast.show { transform: translateX(-50%) translateY(0); }
+
+    /* Report modal */
+    .modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(4px);
+      z-index: 100;
+      display: flex; align-items: center; justify-content: center;
+      opacity: 0; pointer-events: none; transition: opacity 0.2s;
+    }
+    .modal-overlay.open { opacity: 1; pointer-events: all; }
+    .modal {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      width: 340px;
+      transform: scale(0.95); transition: transform 0.2s;
+    }
+    .modal-overlay.open .modal { transform: scale(1); }
+    .modal h3 { font-family: var(--font-head); font-size: 17px; margin-bottom: 6px; }
+    .modal p  { font-size: 13px; color: var(--muted); margin-bottom: 16px; }
+    .modal select, .modal textarea {
+      width: 100%; background: rgba(255,255,255,0.05);
+      border: 1px solid var(--border); border-radius: 8px;
+      color: var(--text); font-family: var(--font-body);
+      font-size: 13px; padding: 8px 10px;
+      margin-bottom: 10px; outline: none;
+    }
+    .modal select option { background: var(--panel); }
+    .modal textarea { resize: none; height: 80px; }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+
+    /* Scrollbar for whole app */
+    * { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Nex<span>Talk</span></div>
+  <div class="status-pill">
+    <div class="status-dot" id="statusDot"></div>
+    <span id="statusText">Disconnected</span>
+  </div>
+  <div style="font-size:12px;color:var(--muted)" id="timerDisplay">00:00</div>
+</header>
+
+<div class="app">
+
+  <!-- VIDEO SECTION -->
+  <div class="video-section">
+    <div class="video-stage">
+      <!-- Remote video -->
+      <video id="remote" autoplay playsinline></video>
+
+      <!-- Name tag -->
+      <div class="name-tag" id="nameTag">Stranger</div>
+
+      <!-- Waiting overlay -->
+      <div id="waiting-overlay">
+        <div class="waiting-ring"></div>
+        <p id="waitingMsg">Click "Start" to find someone</p>
+        <span class="tip">You'll be matched with a random stranger</span>
+      </div>
+
+      <!-- Local PiP -->
+      <div class="local-pip" id="localPip">
+        <video id="local" autoplay muted playsinline></video>
+        <div class="pip-actions">
+          <button class="pip-btn" onclick="expandPip()" title="Expand">⤢</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- CONTROLS -->
+    <div class="controls">
+      <!-- Start/Stop -->
+      <button class="btn btn-primary" id="startBtn" onclick="startSession()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5,3 19,12 5,21"/></svg>
+        Start
+      </button>
+      <button class="btn btn-danger" id="stopBtn" onclick="stopSession()" style="display:none">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+        Stop
+      </button>
+
+      <div class="divider"></div>
+
+      <!-- Mic -->
+      <button class="btn btn-ghost btn-icon" id="micBtn" onclick="toggleMic()" title="Toggle mic">
+        <svg id="micIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+      </button>
+
+      <!-- Camera -->
+      <button class="btn btn-ghost btn-icon" id="camBtn" onclick="toggleCamera()" title="Toggle camera">
+        <svg id="camIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+      </button>
+
+      <div class="divider"></div>
+
+      <!-- Next -->
+      <button class="btn btn-next" id="nextBtn" onclick="nextMatch()" disabled>
+        Next →
+      </button>
+
+      <div class="divider"></div>
+
+      <!-- Fullscreen -->
+      <button class="btn btn-ghost btn-icon btn-fullscreen" onclick="toggleFullscreen()" title="Fullscreen">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+      </button>
+
+      <!-- PiP -->
+      <button class="btn btn-ghost btn-icon" onclick="togglePiP()" title="Picture in Picture">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><rect x="12" y="10" width="8" height="6" rx="1"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- SIDE PANEL -->
+  <div class="side-panel">
+    <div class="panel-tabs">
+      <div class="tab active" onclick="switchTab('chat')">💬 Chat</div>
+      <div class="tab" onclick="switchTab('info')">⚙️ Options</div>
+    </div>
+
+    <!-- CHAT TAB -->
+    <div class="tab-content active" id="tab-chat">
+      <div class="chat-messages" id="chatMessages">
+        <div class="msg system">Connect to a stranger to start chatting</div>
+      </div>
+      <div class="chat-input-area">
+        <textarea class="chat-input" id="chatInput" placeholder="Say something..." rows="1" onkeydown="handleChatKey(event)" oninput="autoResize(this)"></textarea>
+        <button class="send-btn" onclick="sendChat()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- INFO/OPTIONS TAB -->
+    <div class="tab-content" id="tab-info">
+      <div class="info-panel">
+        <div class="info-card">
+          <h4>Session Info</h4>
+          <div class="info-stat"><span>Status</span><span id="infoStatus">Idle</span></div>
+          <div class="info-stat"><span>Duration</span><span id="infoDuration">—</span></div>
+          <div class="info-stat"><span>Strangers met</span><span id="infoCount">0</span></div>
+          <div class="info-stat"><span>Connection</span><span id="infoConn">—</span></div>
+        </div>
+
+        <div class="info-card">
+          <h4>Safety</h4>
+          <div class="action-group">
+            <button class="action-btn warn" onclick="openReport()">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              Report this user
+            </button>
+            <button class="action-btn danger" onclick="blockUser()">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+              Block & skip
+            </button>
+          </div>
+        </div>
+
+        <div class="info-card">
+          <h4>Video options</h4>
+          <div class="action-group">
+            <button class="action-btn" onclick="toggleMic()">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+              Toggle microphone
+            </button>
+            <button class="action-btn" onclick="toggleCamera()">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+              Toggle camera
+            </button>
+            <button class="action-btn" onclick="toggleFullscreen()">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+              Fullscreen
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Report Modal -->
+<div class="modal-overlay" id="reportModal">
+  <div class="modal">
+    <h3>Report User</h3>
+    <p>Help keep NexTalk safe. Your report is anonymous.</p>
+    <select id="reportReason">
+      <option value="">Select a reason...</option>
+      <option value="nudity">Nudity / Sexual content</option>
+      <option value="harassment">Harassment / Bullying</option>
+      <option value="spam">Spam / Bot</option>
+      <option value="minors">Inappropriate with minors</option>
+      <option value="other">Other</option>
+    </select>
+    <textarea id="reportDetails" placeholder="Additional details (optional)..."></textarea>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeReport()" style="height:36px;font-size:13px">Cancel</button>
+      <button class="btn btn-danger" onclick="submitReport()" style="height:36px;font-size:13px">Submit Report</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
