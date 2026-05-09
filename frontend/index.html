@@ -5,338 +5,238 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
   <title>NexTalk — Meet Strangers</title>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
-  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet"/>
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:#0a0a0f;--surface:#111118;--panel:#16161f;
+      --border:rgba(255,255,255,0.08);
+      --accent:#6c63ff;--green:#22c55e;--red:#ef4444;--amber:#f59e0b;
+      --text:#f0f0f8;--muted:#6b6b88;
+      --chat-me:#6c63ff;--chat-them:#1e1e2e;
+      --fh:'Syne',sans-serif;--fb:'DM Sans',sans-serif;
+      --hh:52px;--bh:70px;
+    }
+    html,body{height:100%;width:100%;background:var(--bg);color:var(--text);font-family:var(--fb);overflow:hidden;}
 
-    :root {
-      --bg:        #0a0a0f;
-      --surface:   #111118;
-      --panel:     #16161f;
-      --border:    rgba(255,255,255,0.08);
-      --accent:    #6c63ff;
-      --green:     #22c55e;
-      --red:       #ef4444;
-      --amber:     #f59e0b;
-      --text:      #f0f0f8;
-      --muted:     #6b6b88;
-      --chat-me:   #6c63ff;
-      --chat-them: #1e1e2e;
-      --radius:    12px;
-      --font-head: 'Syne', sans-serif;
-      --font-body: 'DM Sans', sans-serif;
-      --header-h:  52px;
-      --bar-h:     72px;
+    /* ── HEADER ── */
+    header{
+      position:fixed;top:0;left:0;right:0;height:var(--hh);
+      display:flex;align-items:center;justify-content:space-between;
+      padding:0 14px;background:var(--surface);
+      border-bottom:1px solid var(--border);z-index:30;
+    }
+    .logo{font-family:var(--fh);font-size:20px;font-weight:800;}
+    .logo span{color:var(--accent);}
+    .pill{
+      display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);
+      background:rgba(255,255,255,.04);padding:4px 10px;border-radius:999px;
+      border:1px solid var(--border);
+    }
+    .dot{width:7px;height:7px;border-radius:50%;background:var(--muted);transition:background .3s;}
+    .dot.on {background:var(--green);box-shadow:0 0 6px var(--green);}
+    .dot.wait{background:var(--amber);animation:blink 1.2s infinite;}
+    @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+    #timerDisplay{font-size:12px;color:var(--muted);}
+    .chat-fab{
+      width:36px;height:36px;border-radius:10px;
+      background:rgba(255,255,255,.07);border:1px solid var(--border);
+      color:var(--text);font-size:16px;cursor:pointer;
+      display:none;align-items:center;justify-content:center;
     }
 
-    html, body {
-      height: 100%; width: 100%;
-      background: var(--bg); color: var(--text);
-      font-family: var(--font-body);
-      overflow: hidden;
+    /* ── MAIN ── */
+    .main{
+      position:fixed;top:var(--hh);bottom:var(--bh);left:0;right:0;
+      display:flex;
     }
 
-    /* ─── HEADER ─────────────────────────────── */
-    header {
-      position: fixed; top: 0; left: 0; right: 0;
-      height: var(--header-h);
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 0 16px;
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-      z-index: 30;
-    }
-    .logo { font-family: var(--font-head); font-size: 20px; font-weight: 800; }
-    .logo span { color: var(--accent); }
+    /* ── VIDEO ── */
+    .video-wrap{flex:1;position:relative;background:#000;overflow:hidden;}
+    #remote{width:100%;height:100%;object-fit:cover;display:block;background:#000;}
 
-    .status-pill {
-      display: flex; align-items: center; gap: 6px;
-      font-size: 12px; color: var(--muted);
-      background: rgba(255,255,255,0.04);
-      padding: 4px 10px; border-radius: 999px;
-      border: 1px solid var(--border);
+    #overlay{
+      position:absolute;inset:0;display:flex;flex-direction:column;
+      align-items:center;justify-content:center;gap:14px;
+      background:var(--surface);z-index:4;
     }
-    .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); transition: background .3s; }
-    .status-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); }
-    .status-dot.waiting   { background: var(--amber); animation: blink 1.2s infinite; }
-    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.35} }
+    #overlay.hidden{display:none;}
+    .ring{width:54px;height:54px;border-radius:50%;border:3px solid var(--border);border-top-color:var(--accent);animation:spin 1s linear infinite;}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    #overlay p{font-family:var(--fh);font-size:14px;color:var(--muted);text-align:center;padding:0 20px;}
+    #overlay small{font-size:12px;color:var(--muted);opacity:.6;}
 
-    #timerDisplay { font-size: 12px; color: var(--muted); min-width: 36px; text-align: right; }
-
-    .chat-fab {
-      width: 36px; height: 36px; border-radius: 10px;
-      background: rgba(255,255,255,0.07);
-      border: 1px solid var(--border);
-      color: var(--text); font-size: 16px;
-      cursor: pointer; display: none;
-      align-items: center; justify-content: center;
+    .pip{
+      position:absolute;bottom:12px;left:12px;
+      width:110px;height:74px;border-radius:10px;overflow:hidden;
+      border:2px solid rgba(108,99,255,.5);
+      box-shadow:0 6px 20px rgba(0,0,0,.6);z-index:5;
     }
-
-    /* ─── MAIN AREA ──────────────────────────── */
-    .main {
-      position: fixed;
-      top: var(--header-h);
-      bottom: var(--bar-h);
-      left: 0; right: 0;
-      display: flex;
+    #local{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);}
+    .name-tag{
+      position:absolute;top:12px;left:12px;
+      background:rgba(0,0,0,.5);backdrop-filter:blur(8px);
+      padding:3px 10px;border-radius:999px;font-size:12px;
+      border:1px solid var(--border);opacity:0;transition:opacity .3s;z-index:5;
     }
+    .name-tag.visible{opacity:1;}
 
-    /* ─── VIDEO ──────────────────────────────── */
-    .video-wrap {
-      flex: 1;
-      position: relative;
-      background: #000;
-      overflow: hidden;
+    /* ── SIDE PANEL (desktop) ── */
+    .side-panel{
+      width:300px;flex-shrink:0;display:flex;flex-direction:column;
+      background:var(--panel);border-left:1px solid var(--border);
     }
-
-    #remote {
-      width: 100%; height: 100%;
-      object-fit: cover; display: block; background: #000;
+    .tabs{display:flex;border-bottom:1px solid var(--border);}
+    .tab{
+      flex:1;padding:13px;text-align:center;font-size:13px;font-weight:500;
+      color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:all .2s;
     }
-
-    /* waiting overlay */
-    #overlay {
-      position: absolute; inset: 0;
-      display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
-      gap: 14px; background: var(--surface); z-index: 4;
-    }
-    #overlay.hidden { display: none; }
-    .ring {
-      width: 56px; height: 56px; border-radius: 50%;
-      border: 3px solid var(--border);
-      border-top-color: var(--accent);
-      animation: spin 1s linear infinite;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    #overlay p    { font-family: var(--font-head); font-size: 14px; color: var(--muted); text-align: center; padding: 0 24px; }
-    #overlay span { font-size: 12px; color: var(--muted); opacity: .6; }
-
-    /* local pip */
-    .pip {
-      position: absolute; bottom: 12px; left: 12px;
-      width: 110px; height: 72px;
-      border-radius: 10px; overflow: hidden;
-      border: 2px solid rgba(108,99,255,.5);
-      box-shadow: 0 6px 20px rgba(0,0,0,.6);
-      z-index: 5;
-    }
-    #local { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
-
-    .name-tag {
-      position: absolute; top: 12px; left: 12px;
-      background: rgba(0,0,0,.5); backdrop-filter: blur(8px);
-      padding: 3px 10px; border-radius: 999px;
-      font-size: 12px; border: 1px solid var(--border);
-      opacity: 0; transition: opacity .3s; z-index: 5;
-    }
-    .name-tag.visible { opacity: 1; }
-
-    /* ─── SIDE PANEL (desktop) ───────────────── */
-    .side-panel {
-      width: 300px; flex-shrink: 0;
-      display: flex; flex-direction: column;
-      background: var(--panel);
-      border-left: 1px solid var(--border);
-    }
-
-    .tabs { display: flex; border-bottom: 1px solid var(--border); }
-    .tab {
-      flex: 1; padding: 13px; text-align: center;
-      font-size: 13px; font-weight: 500;
-      color: var(--muted); cursor: pointer;
-      border-bottom: 2px solid transparent; transition: all .2s;
-    }
-    .tab.active { color: var(--text); border-bottom-color: var(--accent); }
-
-    .tab-pane { display: none; flex: 1; flex-direction: column; overflow: hidden; }
-    .tab-pane.active { display: flex; }
+    .tab.active{color:var(--text);border-bottom-color:var(--accent);}
+    .tab-pane{display:none;flex:1;flex-direction:column;overflow:hidden;}
+    .tab-pane.active{display:flex;}
 
     /* chat */
-    .messages {
-      flex: 1; overflow-y: auto; padding: 12px;
-      display: flex; flex-direction: column;
-      gap: 7px; scroll-behavior: smooth;
+    .messages{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:7px;scroll-behavior:smooth;}
+    .messages::-webkit-scrollbar{width:3px;}
+    .messages::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px;}
+    .msg{max-width:84%;padding:7px 11px;border-radius:14px;font-size:13px;line-height:1.5;word-break:break-word;animation:pop .18s ease;}
+    @keyframes pop{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+    .msg.me  {background:var(--chat-me);color:#fff;align-self:flex-end;border-bottom-right-radius:4px;}
+    .msg.them{background:var(--chat-them);color:var(--text);align-self:flex-start;border-bottom-left-radius:4px;border:1px solid var(--border);}
+    .msg.sys {background:transparent;color:var(--muted);font-size:11px;align-self:center;text-align:center;padding:2px 0;}
+    .chat-bar{padding:10px;border-top:1px solid var(--border);display:flex;gap:7px;align-items:flex-end;}
+    .chat-in{
+      flex:1;background:rgba(255,255,255,.05);border:1px solid var(--border);
+      border-radius:10px;color:var(--text);font-family:var(--fb);
+      font-size:13px;padding:8px 11px;resize:none;max-height:100px;outline:none;
+      transition:border-color .2s;
     }
-    .messages::-webkit-scrollbar { width: 3px; }
-    .messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
-
-    .msg { max-width: 84%; padding: 7px 11px; border-radius: 14px; font-size: 13px; line-height: 1.5; word-break: break-word; animation: pop .18s ease; }
-    @keyframes pop { from{opacity:0;transform:translateY(5px)} to{opacity:1;transform:none} }
-    .msg.me   { background: var(--chat-me); color:#fff; align-self:flex-end; border-bottom-right-radius:4px; }
-    .msg.them { background: var(--chat-them); color:var(--text); align-self:flex-start; border-bottom-left-radius:4px; border:1px solid var(--border); }
-    .msg.sys  { background:transparent; color:var(--muted); font-size:11px; align-self:center; text-align:center; padding:2px 0; }
-
-    .chat-bar {
-      padding: 10px; border-top: 1px solid var(--border);
-      display: flex; gap: 7px; align-items: flex-end;
+    .chat-in:focus{border-color:var(--accent);}
+    .chat-in::placeholder{color:var(--muted);}
+    .send-btn{
+      width:34px;height:34px;border-radius:10px;background:var(--accent);
+      border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;
+      flex-shrink:0;transition:all .2s;
     }
-    .chat-in {
-      flex: 1; background: rgba(255,255,255,.05);
-      border: 1px solid var(--border); border-radius: 10px;
-      color: var(--text); font-family: var(--font-body);
-      font-size: 13px; padding: 8px 11px;
-      resize: none; max-height: 100px; outline: none;
-      transition: border-color .2s;
-    }
-    .chat-in:focus { border-color: var(--accent); }
-    .chat-in::placeholder { color: var(--muted); }
-    .send {
-      width: 34px; height: 34px; border-radius: 10px;
-      background: var(--accent); border: none; cursor: pointer;
-      display: flex; align-items: center; justify-content: center;
-      flex-shrink: 0; transition: all .2s;
-    }
-    .send:hover { background: #5a52e0; }
+    .send-btn:hover{background:#5a52e0;}
 
     /* options */
-    .opts { padding: 12px; gap: 10px; flex-direction: column; overflow-y: auto; }
-    .card { background: rgba(255,255,255,.04); border: 1px solid var(--border); border-radius: var(--radius); padding: 13px; }
-    .card h4 { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 8px; font-family: var(--font-head); }
-    .stat { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
-    .stat:last-child { border: none; }
-    .stat span:first-child { color: var(--muted); }
-    .arow { display: flex; flex-direction: column; gap: 7px; }
-    .abtn {
-      display: flex; align-items: center; gap: 9px;
-      padding: 10px 13px; border-radius: var(--radius);
-      border: 1px solid var(--border);
-      background: rgba(255,255,255,.03);
-      color: var(--text); font-family: var(--font-body);
-      font-size: 13px; cursor: pointer; transition: all .18s;
-      width: 100%; text-align: left;
+    .opts{padding:12px;gap:10px;flex-direction:column;overflow-y:auto;}
+    .card{background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:12px;padding:13px;}
+    .card h4{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px;font-family:var(--fh);}
+    .stat{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px;}
+    .stat:last-child{border:none;}
+    .stat span:first-child{color:var(--muted);}
+    .arow{display:flex;flex-direction:column;gap:7px;}
+    .abtn{
+      display:flex;align-items:center;gap:9px;padding:10px 13px;border-radius:12px;
+      border:1px solid var(--border);background:rgba(255,255,255,.03);
+      color:var(--text);font-family:var(--fb);font-size:13px;cursor:pointer;
+      transition:all .18s;width:100%;text-align:left;
     }
-    .abtn:hover { background: rgba(255,255,255,.07); }
-    .abtn.danger { color: var(--red); border-color: rgba(239,68,68,.2); }
-    .abtn.danger:hover { background: rgba(239,68,68,.08); }
-    .abtn.warn { color: var(--amber); border-color: rgba(245,158,11,.2); }
-    .abtn.warn:hover { background: rgba(245,158,11,.08); }
+    .abtn:hover{background:rgba(255,255,255,.07);}
+    .abtn.danger{color:var(--red);border-color:rgba(239,68,68,.2);}
+    .abtn.danger:hover{background:rgba(239,68,68,.08);}
+    .abtn.warn{color:var(--amber);border-color:rgba(245,158,11,.2);}
+    .abtn.warn:hover{background:rgba(245,158,11,.08);}
 
-    /* ─── BOTTOM CONTROLS BAR ────────────────── */
-    .ctrl-bar {
-      position: fixed;
-      bottom: 0; left: 0; right: 0;
-      height: var(--bar-h);
-      display: flex; align-items: center; justify-content: center;
-      gap: 8px;
-      background: var(--surface);
-      border-top: 1px solid var(--border);
-      padding: 0 12px;
-      z-index: 30;
+    /* ── BOTTOM BAR ── */
+    .ctrl-bar{
+      position:fixed;bottom:0;left:0;right:0;height:var(--bh);
+      display:flex;align-items:center;justify-content:center;gap:8px;
+      background:var(--surface);border-top:1px solid var(--border);
+      padding:0 12px;z-index:30;
     }
-
-    .btn {
-      display: flex; align-items: center; justify-content: center; gap: 5px;
-      height: 42px; padding: 0 16px; border-radius: 999px;
-      border: none; cursor: pointer;
-      font-family: var(--font-body); font-size: 13px; font-weight: 500;
-      transition: all .18s; outline: none; white-space: nowrap; flex-shrink: 0;
+    .btn{
+      display:flex;align-items:center;justify-content:center;gap:5px;
+      height:42px;padding:0 16px;border-radius:999px;border:none;cursor:pointer;
+      font-family:var(--fb);font-size:13px;font-weight:500;
+      transition:all .18s;outline:none;white-space:nowrap;flex-shrink:0;
     }
-    .btn svg { width: 15px; height: 15px; flex-shrink: 0; }
-    .ico { width: 42px; height: 42px; padding: 0; border-radius: 50%; }
+    .btn svg{width:15px;height:15px;flex-shrink:0;}
+    .ico{width:42px;height:42px;padding:0;border-radius:50%;}
+    .primary{background:var(--accent);color:#fff;}
+    .primary:hover{background:#5a52e0;}
+    .danger-btn{background:var(--red);color:#fff;}
+    .ghost{background:rgba(255,255,255,.07);color:var(--text);border:1px solid var(--border);}
+    .ghost:hover{background:rgba(255,255,255,.13);}
+    .muted-state{background:rgba(239,68,68,.15);color:var(--red);border:1px solid rgba(239,68,68,.3);}
+    .next-btn{background:linear-gradient(135deg,var(--accent),#9b7dff);color:#fff;font-weight:600;}
+    .next-btn:hover{transform:scale(1.05);box-shadow:0 4px 16px rgba(108,99,255,.4);}
+    .next-btn:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none;}
+    .div{width:1px;height:24px;background:var(--border);flex-shrink:0;}
 
-    .primary { background: var(--accent); color: #fff; }
-    .primary:hover { background: #5a52e0; transform: scale(1.04); }
-    .danger-btn { background: var(--red); color: #fff; }
-    .danger-btn:hover { background: #c53030; }
-    .ghost { background: rgba(255,255,255,.07); color: var(--text); border: 1px solid var(--border); }
-    .ghost:hover { background: rgba(255,255,255,.12); }
-    .muted-state { background: rgba(239,68,68,.15); color: var(--red); border: 1px solid rgba(239,68,68,.3); }
-    .next-btn { background: linear-gradient(135deg,var(--accent),#9b7dff); color:#fff; font-weight:600; }
-    .next-btn:hover { transform: scale(1.05); box-shadow: 0 4px 18px rgba(108,99,255,.4); }
-    .next-btn:disabled { opacity: .4; cursor: not-allowed; transform: none; box-shadow: none; }
-    .div { width: 1px; height: 24px; background: var(--border); flex-shrink: 0; }
-
-    /* ─── MODAL ──────────────────────────────── */
-    .overlay-modal {
-      position: fixed; inset: 0;
-      background: rgba(0,0,0,.7); backdrop-filter: blur(4px);
-      z-index: 100; display: flex;
-      align-items: center; justify-content: center;
-      opacity: 0; pointer-events: none; transition: opacity .2s;
-      padding: 16px;
+    /* ── MODAL ── */
+    .modal-bg{
+      position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);
+      z-index:100;display:flex;align-items:center;justify-content:center;
+      opacity:0;pointer-events:none;transition:opacity .2s;padding:16px;
     }
-    .overlay-modal.open { opacity:1; pointer-events:all; }
-    .modal {
-      background: var(--panel); border: 1px solid var(--border);
-      border-radius: 16px; padding: 22px;
-      width: 100%; max-width: 340px;
-      transform: scale(.95); transition: transform .2s;
+    .modal-bg.open{opacity:1;pointer-events:all;}
+    .modal{
+      background:var(--panel);border:1px solid var(--border);border-radius:16px;
+      padding:22px;width:100%;max-width:340px;transform:scale(.95);transition:transform .2s;
     }
-    .overlay-modal.open .modal { transform: scale(1); }
-    .modal h3 { font-family: var(--font-head); font-size:16px; margin-bottom:5px; }
-    .modal p  { font-size:13px; color:var(--muted); margin-bottom:14px; }
-    .modal select, .modal textarea {
-      width:100%; background:rgba(255,255,255,.05);
-      border:1px solid var(--border); border-radius:8px;
-      color:var(--text); font-family:var(--font-body);
-      font-size:13px; padding:8px 10px; margin-bottom:9px; outline:none;
+    .modal-bg.open .modal{transform:scale(1);}
+    .modal h3{font-family:var(--fh);font-size:16px;margin-bottom:5px;}
+    .modal p{font-size:13px;color:var(--muted);margin-bottom:14px;}
+    .modal select,.modal textarea{
+      width:100%;background:rgba(255,255,255,.05);border:1px solid var(--border);
+      border-radius:8px;color:var(--text);font-family:var(--fb);
+      font-size:13px;padding:8px 10px;margin-bottom:9px;outline:none;
     }
-    .modal select option { background:var(--panel); }
-    .modal textarea { resize:none; height:75px; }
-    .modal-btns { display:flex; gap:8px; justify-content:flex-end; margin-top:4px; }
+    .modal select option{background:var(--panel);}
+    .modal textarea{resize:none;height:75px;}
+    .modal-btns{display:flex;gap:8px;justify-content:flex-end;margin-top:4px;}
 
-    /* ─── TOAST ──────────────────────────────── */
-    #toast {
-      position: fixed; bottom: calc(var(--bar-h) + 10px); left: 50%;
-      transform: translateX(-50%) translateY(50px);
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: 10px; padding: 9px 18px; font-size: 13px;
-      box-shadow: 0 6px 24px rgba(0,0,0,.5);
-      z-index: 999; pointer-events: none;
-      transition: transform .3s cubic-bezier(.34,1.56,.64,1);
-      white-space: nowrap;
+    /* ── TOAST — sits above bottom bar, never covers buttons ── */
+    #toast{
+      position:fixed;
+      bottom:calc(var(--bh) + 10px);
+      left:50%;transform:translateX(-50%) translateY(40px);
+      background:rgba(20,20,30,.95);border:1px solid var(--border);
+      border-radius:10px;padding:9px 18px;font-size:13px;
+      box-shadow:0 4px 20px rgba(0,0,0,.5);
+      z-index:40;pointer-events:none;white-space:nowrap;
+      transition:transform .28s cubic-bezier(.34,1.56,.64,1),opacity .28s;
+      opacity:0;
     }
-    #toast.show { transform: translateX(-50%) translateY(0); }
+    #toast.show{transform:translateX(-50%) translateY(0);opacity:1;}
 
-    /* ─── MOBILE (<= 700px) ──────────────────── */
-    @media (max-width: 700px) {
-      :root { --bar-h: 64px; }
+    /* ── MOBILE ── */
+    @media(max-width:700px){
+      :root{--bh:64px;}
+      .chat-fab{display:flex;}
+      #timerDisplay{display:none;}
+      .side-panel{display:none;}
 
-      .chat-fab { display: flex; }
-      #timerDisplay { display: none; }
-
-      /* hide desktop side panel */
-      .side-panel { display: none; }
-
-      /* mobile chat drawer */
-      .mobile-drawer {
-        position: fixed;
-        left: 0; right: 0; bottom: var(--bar-h);
-        height: 55vh;
-        background: var(--panel);
-        border-top: 1px solid var(--border);
-        border-radius: 16px 16px 0 0;
-        display: flex; flex-direction: column;
-        transform: translateY(100%);
-        transition: transform .3s cubic-bezier(.34,1.56,.64,1);
-        z-index: 25;
+      /* drawer slides up from above bottom bar */
+      .mobile-drawer{
+        position:fixed;left:0;right:0;bottom:var(--bh);height:55vh;
+        background:var(--panel);border-top:1px solid var(--border);
+        border-radius:16px 16px 0 0;
+        display:flex;flex-direction:column;
+        transform:translateY(100%);
+        transition:transform .3s cubic-bezier(.34,1.56,.64,1);
+        z-index:25;
       }
-      .mobile-drawer.open { transform: translateY(0); }
-      .drawer-handle {
-        width: 36px; height: 4px;
-        background: var(--border); border-radius: 2px;
-        margin: 10px auto 6px; flex-shrink: 0;
+      .mobile-drawer.open{transform:translateY(0);}
+      .drawer-handle{
+        width:36px;height:4px;background:var(--border);
+        border-radius:2px;margin:10px auto 6px;flex-shrink:0;
       }
 
-      /* controls: smaller, wrap nicely */
-      .ctrl-bar {
-        gap: 6px;
-        padding: 0 8px;
-        flex-wrap: nowrap;
-        overflow-x: auto;
-      }
-      .btn { height: 40px; padding: 0 12px; font-size: 12px; }
-      .ico { width: 40px; height: 40px; }
-      .btn svg { width: 14px; height: 14px; }
-
-      /* hide desktop-only buttons on mobile */
-      .hide-mobile { display: none !important; }
-
-      .pip { width: 88px; height: 60px; }
+      /* controls: no wrap, scroll if needed */
+      .ctrl-bar{gap:6px;padding:0 8px;flex-wrap:nowrap;overflow-x:auto;}
+      .ctrl-bar::-webkit-scrollbar{display:none;}
+      .btn{height:40px;padding:0 12px;font-size:12px;}
+      .ico{width:40px;height:40px;}
+      .btn svg{width:14px;height:14px;}
+      .hide-mob{display:none!important;}
+      .pip{width:88px;height:60px;}
     }
 
-    * { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+    *{scrollbar-width:thin;scrollbar-color:var(--border) transparent;}
   </style>
 </head>
 <body>
@@ -344,55 +244,46 @@
 <!-- HEADER -->
 <header>
   <div class="logo">Nex<span>Talk</span></div>
-  <div class="status-pill">
-    <div class="status-dot" id="statusDot"></div>
+  <div class="pill">
+    <div class="dot" id="statusDot"></div>
     <span id="statusText">Disconnected</span>
   </div>
-  <div style="display:flex;align-items:center;gap:8px">
+  <div style="display:flex;align-items:center;gap:8px;">
     <span id="timerDisplay">00:00</span>
-    <button class="chat-fab" onclick="toggleDrawer()" title="Chat">💬</button>
+    <button class="chat-fab" onclick="toggleDrawer()">💬</button>
   </div>
 </header>
 
-<!-- MAIN (between header and bottom bar) -->
+<!-- MAIN -->
 <div class="main">
-
   <!-- VIDEO -->
   <div class="video-wrap">
     <video id="remote" autoplay playsinline></video>
     <div class="name-tag" id="nameTag">Stranger</div>
-
     <div id="overlay">
       <div class="ring"></div>
       <p id="overlayMsg">Click "Start" to find someone</p>
-      <span>You'll be matched with a random stranger</span>
+      <small>You'll be matched with a random stranger</small>
     </div>
-
-    <div class="pip">
-      <video id="local" autoplay muted playsinline></video>
-    </div>
+    <div class="pip"><video id="local" autoplay muted playsinline></video></div>
   </div>
 
-  <!-- SIDE PANEL (desktop only) -->
+  <!-- SIDE PANEL desktop -->
   <div class="side-panel">
     <div class="tabs">
       <div class="tab active" onclick="switchTab('chat')">💬 Chat</div>
       <div class="tab" onclick="switchTab('opts')">⚙️ Options</div>
     </div>
-
     <div class="tab-pane active" id="pane-chat">
-      <div class="messages" id="msgs">
-        <div class="msg sys">Connect to a stranger to start chatting</div>
-      </div>
+      <div class="messages" id="msgs"><div class="msg sys">Connect to a stranger to start chatting</div></div>
       <div class="chat-bar">
         <textarea class="chat-in" id="chatIn" placeholder="Say something..." rows="1"
           onkeydown="handleKey(event)" oninput="resize(this)"></textarea>
-        <button class="send" onclick="sendChat()">
+        <button class="send-btn" onclick="sendChat()">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
         </button>
       </div>
     </div>
-
     <div class="tab-pane" id="pane-opts">
       <div class="opts">
         <div class="card">
@@ -406,7 +297,7 @@
           <h4>Safety</h4>
           <div class="arow">
             <button class="abtn warn" onclick="openReport()">⚠️ Report this user</button>
-            <button class="abtn danger" onclick="blockUser()">🚫 Block & skip</button>
+            <button class="abtn danger" onclick="blockUser()">🚫 Block &amp; skip</button>
           </div>
         </div>
         <div class="card">
@@ -423,7 +314,7 @@
   </div>
 </div>
 
-<!-- MOBILE CHAT DRAWER -->
+<!-- MOBILE DRAWER -->
 <div class="mobile-drawer" id="drawer">
   <div class="drawer-handle"></div>
   <div class="tabs">
@@ -431,13 +322,11 @@
     <div class="tab" onclick="switchMobileTab('opts')">⚙️ Options</div>
   </div>
   <div class="tab-pane active" id="mpane-chat">
-    <div class="messages" id="mmsgs">
-      <div class="msg sys">Connect to a stranger to start chatting</div>
-    </div>
+    <div class="messages" id="mmsgs"><div class="msg sys">Connect to a stranger to start chatting</div></div>
     <div class="chat-bar">
       <textarea class="chat-in" id="mChatIn" placeholder="Say something..." rows="1"
         onkeydown="handleMKey(event)" oninput="resize(this)"></textarea>
-      <button class="send" onclick="sendMChat()">
+      <button class="send-btn" onclick="sendMChat()">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
       </button>
     </div>
@@ -454,7 +343,15 @@
         <h4>Safety</h4>
         <div class="arow">
           <button class="abtn warn" onclick="openReport()">⚠️ Report user</button>
-          <button class="abtn danger" onclick="blockUser()">🚫 Block & skip</button>
+          <button class="abtn danger" onclick="blockUser()">🚫 Block &amp; skip</button>
+        </div>
+      </div>
+      <div class="card">
+        <h4>Controls</h4>
+        <div class="arow">
+          <button class="abtn" onclick="toggleMic()">🎙️ Toggle microphone</button>
+          <button class="abtn" onclick="toggleCam()">📷 Toggle camera</button>
+          <button class="abtn" onclick="flipCamera()">🔄 Flip camera</button>
         </div>
       </div>
     </div>
@@ -463,7 +360,7 @@
 <div id="backdrop" onclick="closeDrawer()"
   style="display:none;position:fixed;inset:0;z-index:24;background:rgba(0,0,0,.45)"></div>
 
-<!-- BOTTOM CONTROLS BAR -->
+<!-- BOTTOM BAR -->
 <div class="ctrl-bar">
   <button class="btn primary" id="startBtn" onclick="startSession()">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5,3 19,12 5,21"/></svg>
@@ -487,8 +384,15 @@
 
   <button class="btn ghost ico" id="camBtn" onclick="toggleCam()" title="Camera">
     <svg id="camIco" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-      <path d="M23 7l-7 5 7 5V7z"/>
-      <rect x="1" y="5" width="15" height="14" rx="2"/>
+      <path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/>
+    </svg>
+  </button>
+
+  <!-- Flip camera — mobile only -->
+  <button class="btn ghost ico hide-mob" id="flipBtn" onclick="flipCamera()" title="Flip camera" style="display:none">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M1 4v6h6"/><path d="M23 20v-6h-6"/>
+      <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/>
     </svg>
   </button>
 
@@ -496,19 +400,17 @@
 
   <button class="btn next-btn" id="nextBtn" onclick="nextMatch()" disabled>Next →</button>
 
-  <div class="div hide-mobile"></div>
-
-  <button class="btn ghost ico hide-mobile" onclick="goFullscreen()" title="Fullscreen">
+  <div class="div hide-mob"></div>
+  <button class="btn ghost ico hide-mob" onclick="goFullscreen()">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
   </button>
-
-  <button class="btn ghost ico hide-mobile" onclick="goPiP()" title="PiP">
+  <button class="btn ghost ico hide-mob" onclick="goPiP()">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><rect x="12" y="10" width="8" height="6" rx="1"/></svg>
   </button>
 </div>
 
 <!-- REPORT MODAL -->
-<div class="overlay-modal" id="reportModal">
+<div class="modal-bg" id="reportModal">
   <div class="modal">
     <h3>Report User</h3>
     <p>Your report is anonymous and helps keep NexTalk safe.</p>
@@ -529,6 +431,14 @@
 </div>
 
 <div id="toast"></div>
+
+<script>
+// Show flip button only on mobile/touch devices
+if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
+  document.getElementById('flipBtn').style.display = 'flex';
+  document.getElementById('flipBtn').classList.remove('hide-mob');
+}
+</script>
 <script src="app.js"></script>
 </body>
 </html>
