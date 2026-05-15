@@ -75,8 +75,10 @@ body {
   display: flex; justify-content: space-between; align-items: center;
   padding: 14px 22px;
   gap: 12px;
+  flex-wrap: nowrap;
+  min-width: 0;
 }
-.brand { display:flex; align-items:center; gap:10px; }
+.brand { display:flex; align-items:center; gap:10px; flex-shrink: 0; }
 .brand .dot {
   width: 9px; height: 9px; background: var(--accent); border-radius: 50%;
   box-shadow: 0 0 12px var(--accent);
@@ -592,10 +594,16 @@ video {
 @media (max-width: 820px) {
   .main { grid-template-columns: 1fr; padding: 0 14px 14px; }
   .side-panel { display: none; }
-  .topbar { padding: 12px 16px; }
+  .topbar { padding: 12px 14px; gap: 8px; }
   .brand h1 { font-size: 17px; }
-  .pill { padding: 5px 10px; font-size: 11px; }
-  .self-preview { width: 95px; height: 130px; bottom: 70px; right: 70px; }
+  .top-pills { gap: 4px; flex-shrink: 1; min-width: 0; }
+  .pill { padding: 4px 8px; font-size: 10px; }
+  .pill .live-dot { width: 5px; height: 5px; }
+  .self-preview {
+    width: 90px; height: 120px;
+    bottom: 70px;
+    right: auto; left: 12px;
+  }
   .drawer-btn {
     display: flex; position: fixed; bottom: 78px; right: 14px;
     width: 46px; height: 46px; border-radius: 50%;
@@ -607,7 +615,7 @@ video {
   .country-tag { top: 12px; left: 12px; padding: 5px 10px; font-size: 12px; }
   .rating-tag { top: 12px; left: auto; right: 12px; padding: 5px 10px; font-size: 11px; }
   .peer-interests { top: 50px; right: 12px; max-width: 70%; }
-  .timer-tag { bottom: 70px; left: 12px; font-size: 11px; padding: 4px 10px; }
+  .timer-tag { bottom: 70px; left: auto; right: 70px; font-size: 11px; padding: 4px 10px; }
   .controls { bottom: 14px; gap: 6px; flex-wrap: nowrap; padding: 0 8px; }
   .ctrl { width: 40px; height: 40px; flex-shrink: 0; }
   .ctrl.primary, .ctrl.next-btn { padding: 0 14px; font-size: 12px; }
