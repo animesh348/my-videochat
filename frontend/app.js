@@ -153,21 +153,64 @@ function editInterests() {
 }
 
 // ─── CAMERA ───────────────────────────────────────────────────
+// ─── CAMERA ───────────────────────────────────────────────────
+// Called twice: once on boot (front=true, full audio+video), and on flip.
+// We keep the audio track alive across flips so the call doesn't go silent.
 async function startCamera(front) {
   try {
-    if (stream) stream.getTracks().forEach(t => t.stop());
-    stream = await navigator.mediaDevices.getUserMedia({
-      audio: true,
-      video: { facingMode: front ? 'user' : 'environment', width:{ideal:1280}, height:{ideal:720} }
-    });
-    document.getElementById('local').srcObject = stream;
-    if (pc) {
-      const vt = stream.getVideoTracks()[0];
-      const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
-      if (sender && vt) await sender.replaceTrack(vt);
+    const isFlip = !!stream && !!stream.getAudioTracks().length;
+    let newVideoStream;
+    try {
+      newVideoStream = await navigator.mediaDevices.getUserMedia({
+        audio: isFlip ? false : true,
+        video: { facingMode: front ? 'user' : 'environment', width:{ideal:1280}, height:{ideal:720} }
+      });
+    } catch (err) {
+      // Fallback: some Android browsers fail with exact facingMode constraint
+      console.warn('[NexTalk] facingMode failed, retrying without:', err);
+      newVideoStream = await navigator.mediaDevices.getUserMedia({
+        audio: isFlip ? false : true,
+        video: true
+      });
     }
+
+    const newVideoTrack = newVideoStream.getVideoTracks()[0];
+
+    if (isFlip) {
+      // Stop ONLY the old video track. Keep the audio track running.
+      const oldVideoTrack = stream.getVideoTracks()[0];
+      if (oldVideoTrack) {
+        stream.removeTrack(oldVideoTrack);
+        try { oldVideoTrack.stop(); } catch {}
+      }
+      stream.addTrack(newVideoTrack);
+    } else {
+      // First-time setup: assign the new stream (audio + video).
+      stream = newVideoStream;
+    }
+
+    // Always refresh self-preview srcObject
+    const localEl = document.getElementById('local');
+    localEl.srcObject = stream;
+    localEl.play().catch(() => {});
+
+    // If we're in an active call, replace the video sender's track
+    if (pc) {
+      const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
+      if (sender && newVideoTrack) {
+        try { await sender.replaceTrack(newVideoTrack); }
+        catch (e) { console.warn('[NexTalk] replaceTrack failed:', e); }
+      }
+      // Re-apply camera-on/off state (replaceTrack resets enabled to true)
+      newVideoTrack.enabled = camOn;
+    }
+
+    // Re-apply mic state too
+    stream.getAudioTracks().forEach(t => t.enabled = micOn);
+
     setStatus('idle', 'Ready');
-  } catch {
+  } catch (e) {
+    console.error('[NexTalk] camera error:', e);
     toast('Camera/mic denied — check permissions');
     setStatus('idle', 'No camera');
   }

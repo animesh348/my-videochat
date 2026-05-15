@@ -211,15 +211,15 @@ video {
   display: flex; align-items: center; gap: 6px;
 }
 
-/* Overlay (searching/idle) */
+/* Overlay (searching/idle) — BELOW controls so Start button stays clickable */
 .overlay {
-  position: absolute; inset: 0; z-index: 3;       /* was z-index: 6 */
+  position: absolute; inset: 0; z-index: 3;
   background: linear-gradient(135deg, rgba(45,31,28,0.85), rgba(61,42,38,0.85));
   backdrop-filter: blur(20px);
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   text-align: center;
   transition: opacity .3s;
-  pointer-events: none;                            /* NEW: clicks pass through */
+  pointer-events: none;   /* let clicks pass through to controls underneath */
 }
 .overlay.hidden { opacity: 0; pointer-events: none; }
 .overlay .spinner {
@@ -242,9 +242,8 @@ video {
 /* ── Controls bar ───────────────────────────────────────────── */
 .controls {
   position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%);
-  display: flex; gap: 8px; z-index: 10;             /* was z-index: 5 */
+  display: flex; gap: 8px; z-index: 10;
 }
-
 .ctrl {
   width: 46px; height: 46px;
   border-radius: 50%;
@@ -596,10 +595,10 @@ video {
   .topbar { padding: 12px 16px; }
   .brand h1 { font-size: 17px; }
   .pill { padding: 5px 10px; font-size: 11px; }
-  .self-preview { width: 100px; height: 135px; bottom: 80px; right: 12px; }
+  .self-preview { width: 95px; height: 130px; bottom: 70px; right: 70px; }
   .drawer-btn {
-    display: flex; position: fixed; bottom: 18px; right: 18px;
-    width: 50px; height: 50px; border-radius: 50%;
+    display: flex; position: fixed; bottom: 78px; right: 14px;
+    width: 46px; height: 46px; border-radius: 50%;
     background: var(--accent); color: #fff;
     border: none; cursor: pointer; z-index: 50;
     align-items: center; justify-content: center;
@@ -608,8 +607,9 @@ video {
   .country-tag { top: 12px; left: 12px; padding: 5px 10px; font-size: 12px; }
   .rating-tag { top: 12px; left: auto; right: 12px; padding: 5px 10px; font-size: 11px; }
   .peer-interests { top: 50px; right: 12px; max-width: 70%; }
-  .controls { bottom: 14px; gap: 6px; }
-  .ctrl { width: 42px; height: 42px; }
+  .timer-tag { bottom: 70px; left: 12px; font-size: 11px; padding: 4px 10px; }
+  .controls { bottom: 14px; gap: 6px; flex-wrap: nowrap; padding: 0 8px; }
+  .ctrl { width: 40px; height: 40px; flex-shrink: 0; }
   .ctrl.primary, .ctrl.next-btn { padding: 0 14px; font-size: 12px; }
 
   /* Mobile drawer */
