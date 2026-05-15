@@ -31,6 +31,12 @@ let timerStart = null, timerInterval = null;
 let retries = 0;
 let usingFrontCam = true;
 
+// NEW: track connection lifecycle so we don't show "error" when it's
+// really just "server waking up" or "no one online yet"
+let hasEverConnected = false;   // true after first successful ws.onopen
+let intentionalClose = false;   // true when WE closed the socket (stop/next)
+let waitingForPeer = false;     // true when server told us to wait
+
 // ── BOOT ────────────────────────────────────────────────────────
 window.addEventListener('load', () => startCamera(true));
 
@@ -60,6 +66,8 @@ const wsUrl = () => `${location.protocol==='https:'?'wss':'ws'}://${location.hos
 function startSession() {
   if (!stream) { toast('Camera not available'); return; }
   active = true; retries = 0;
+  hasEverConnected = false;
+  intentionalClose = false;
   document.getElementById('startBtn').style.display = 'none';
   document.getElementById('stopBtn').style.display  = 'flex';
   document.getElementById('nextBtn').disabled = false;
@@ -67,7 +75,9 @@ function startSession() {
 }
 
 function stopSession() {
-  active = false; hangup();
+  active = false;
+  intentionalClose = true;
+  hangup();
   if (ws) { try { ws.close(); } catch {} ws = null; }
   stopTimer();
   document.getElementById('startBtn').style.display = 'flex';
@@ -77,29 +87,66 @@ function stopSession() {
   setStatus('idle', 'Disconnected');
   sysMsg('Session ended.');
   setInfo('Idle', '—', '—');
+  waitingForPeer = false;
 }
 
 function nextMatch() {
   if (!active) return;
-  hangup(); sysMsg('Finding next stranger...'); connect();
+  hangup();
+  sysMsg('Finding next stranger...');
+  // If our socket is still alive, just ask the server to re-queue us.
+  // Otherwise reconnect.
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    send({ type: 'requeue' });
+    showOverlay('Looking for someone...');
+    setStatus('waiting', 'Searching...');
+  } else {
+    connect();
+  }
 }
 
 // ── CONNECT ──────────────────────────────────────────────────────
 function connect() {
-  if (ws) { try { ws.close(); } catch {} ws = null; }
-  showOverlay('Looking for someone...');
-  setStatus('waiting', 'Searching...');
-  try { ws = new WebSocket(wsUrl()); }
-  catch { if (active) setTimeout(connect, 3000); return; }
+  if (ws) {
+    intentionalClose = true;          // suppress onclose retry for this old socket
+    try { ws.close(); } catch {}
+    ws = null;
+  }
+  intentionalClose = false;
+  waitingForPeer = false;
 
-  ws.onopen = () => { retries = 0; setStatus('waiting', 'Waiting...'); };
+  // Friendlier first-attempt message (handles Render cold start)
+  if (!hasEverConnected) {
+    showOverlay('Connecting to server...');
+    setStatus('waiting', 'Connecting...');
+  } else {
+    showOverlay('Looking for someone...');
+    setStatus('waiting', 'Searching...');
+  }
+
+  try { ws = new WebSocket(wsUrl()); }
+  catch {
+    if (active) setTimeout(connect, 3000);
+    return;
+  }
+
+  ws.onopen = () => {
+    retries = 0;
+    hasEverConnected = true;
+    setStatus('waiting', 'Waiting...');
+  };
 
   ws.onmessage = async ({ data }) => {
     let m; try { m = JSON.parse(data); } catch { return; }
 
-    if (m.type === 'waiting') showOverlay('Waiting for a stranger...');
+    if (m.type === 'waiting') {
+      waitingForPeer = true;
+      showOverlay('Waiting for someone to join...');
+      setStatus('waiting', 'No one online — waiting');
+    }
 
     if (m.type === 'matched') {
+      waitingForPeer = false;
       roomId = m.room; myRole = m.role; metCount++;
       updateCounters(); hideOverlay();
       setStatus('connected', 'Connected');
@@ -116,18 +163,61 @@ function connect() {
 
     if (m.type === 'peer_disconnected') {
       sysMsg('Stranger disconnected.');
-      setStatus('waiting', 'Disconnected');
+      setStatus('waiting', 'Searching...');
       document.getElementById('nameTag').classList.remove('visible');
       document.getElementById('remote').srcObject = null;
       stopTimer(); if (pc) { pc.close(); pc = null; }
+      roomId = null; myRole = null;
       setInfo('Stranger left', null, '—');
-      if (active) setTimeout(() => { sysMsg('Finding next...'); connect(); }, 1500);
+      // Don't tear down the socket — just ask server to re-queue us.
+      if (active && ws && ws.readyState === WebSocket.OPEN) {
+        showOverlay('Looking for someone...');
+        setTimeout(() => {
+          if (active && ws && ws.readyState === WebSocket.OPEN) {
+            send({ type: 'requeue' });
+          } else if (active) {
+            connect();
+          }
+        }, 800);
+      } else if (active) {
+        setTimeout(connect, 800);
+      }
     }
   };
 
-  ws.onerror = () => { if (active) toast('Connection error, retrying...'); };
+  // SILENT error handling — no scary toast.
+  // The browser fires onerror+onclose together; onclose is where we retry.
+  ws.onerror = () => { /* swallow; onclose will handle reconnect */ };
+
   ws.onclose = () => {
-    if (active) { retries++; setTimeout(() => { if (active) connect(); }, Math.min(retries*1000,5000)); }
+    // Did WE close it (stop button, manual close)? Then do nothing.
+    if (intentionalClose) return;
+    if (!active) return;
+
+    waitingForPeer = false;
+
+    // Cold start case: never connected once. Be patient & quiet.
+    if (!hasEverConnected) {
+      retries++;
+      const delay = Math.min(2000 + retries * 1000, 8000);
+      // Only show a soft hint after a couple of tries (Render cold start ~50s)
+      if (retries === 3) {
+        showOverlay('Server is waking up, please wait...');
+      } else if (retries >= 8) {
+        // Real problem — server unreachable
+        showOverlay('Can\'t reach server. Retrying...');
+        setStatus('waiting', 'Server unreachable');
+      }
+      setTimeout(() => { if (active) connect(); }, delay);
+      return;
+    }
+
+    // Mid-session disconnect — quietly reconnect
+    retries++;
+    const delay = Math.min(retries * 1000, 5000);
+    setStatus('waiting', 'Reconnecting...');
+    showOverlay('Reconnecting...');
+    setTimeout(() => { if (active) connect(); }, delay);
   };
 }
 
@@ -150,7 +240,15 @@ async function makePC() {
   pc.onconnectionstatechange = () => {
     const s = pc.connectionState;
     if (s === 'connected') { setInfo(null, null, 'Connected ✓'); toast('Video connected!'); }
-    if (s === 'failed' && active) setTimeout(connect, 1500);
+    if (s === 'failed' && active) {
+      // Don't slam the WS; just re-queue.
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        send({ type: 'requeue' });
+        showOverlay('Looking for someone...');
+      } else {
+        setTimeout(connect, 1500);
+      }
+    }
   };
 }
 
