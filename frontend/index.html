@@ -1,444 +1,881 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-  <title>NexTalk — Meet Strangers</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com"/>
-  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet"/>
-  <style>
-    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-    :root{
-      --bg:#0a0a0f;--surface:#111118;--panel:#16161f;
-      --border:rgba(255,255,255,0.08);
-      --accent:#6c63ff;--green:#22c55e;--red:#ef4444;--amber:#f59e0b;
-      --text:#f0f0f8;--muted:#6b6b88;
-      --chat-me:#6c63ff;--chat-them:#1e1e2e;
-      --fh:'Syne',sans-serif;--fb:'DM Sans',sans-serif;
-      --hh:52px;--bh:70px;
-    }
-    html,body{height:100%;width:100%;background:var(--bg);color:var(--text);font-family:var(--fb);overflow:hidden;}
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>NexTalk — Meet someone new</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Syne:wght@500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:        #1a1614;
+  --bg-2:      #221c19;
+  --surface:   rgba(255,255,255,0.06);
+  --surface-2: rgba(255,255,255,0.10);
+  --border:    rgba(255,255,255,0.12);
+  --border-2:  rgba(255,255,255,0.20);
+  --text:      #f5efe8;
+  --text-2:    rgba(245,239,232,0.70);
+  --text-3:    rgba(245,239,232,0.45);
+  --accent:    #f97316;      /* warm amber */
+  --accent-2:  #be185d;      /* burgundy */
+  --accent-3:  #ec4899;      /* hot pink */
+  --good:      #34d399;
+  --bad:       #ef4444;
+  --warn:      #fbbf24;
+  --radius:    14px;
+  --radius-lg: 20px;
+  --shadow:    0 8px 24px rgba(0,0,0,0.4);
+}
 
-    /* ── HEADER ── */
-    header{
-      position:fixed;top:0;left:0;right:0;height:var(--hh);
-      display:flex;align-items:center;justify-content:space-between;
-      padding:0 14px;background:var(--surface);
-      border-bottom:1px solid var(--border);z-index:30;
-    }
-    .logo{font-family:var(--fh);font-size:20px;font-weight:800;}
-    .logo span{color:var(--accent);}
-    .pill{
-      display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);
-      background:rgba(255,255,255,.04);padding:4px 10px;border-radius:999px;
-      border:1px solid var(--border);
-    }
-    .dot{width:7px;height:7px;border-radius:50%;background:var(--muted);transition:background .3s;}
-    .dot.on {background:var(--green);box-shadow:0 0 6px var(--green);}
-    .dot.wait{background:var(--amber);animation:blink 1.2s infinite;}
-    @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
-    #timerDisplay{font-size:12px;color:var(--muted);}
-    .chat-fab{
-      width:36px;height:36px;border-radius:10px;
-      background:rgba(255,255,255,.07);border:1px solid var(--border);
-      color:var(--text);font-size:16px;cursor:pointer;
-      display:none;align-items:center;justify-content:center;
-    }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin:0; padding:0; height:100%; overflow:hidden; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  position: relative;
+}
 
-    /* ── MAIN ── */
-    .main{
-      position:fixed;top:var(--hh);bottom:var(--bh);left:0;right:0;
-      display:flex;
-    }
+/* ── Animated warm background blobs ─────────────────────────── */
+.bg-blobs {
+  position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
+}
+.bg-blobs::before, .bg-blobs::after {
+  content: ""; position: absolute; border-radius: 50%;
+  filter: blur(80px); opacity: 0.35;
+  animation: blobFloat 18s ease-in-out infinite;
+}
+.bg-blobs::before {
+  top: -150px; right: -100px; width: 500px; height: 500px;
+  background: radial-gradient(circle, var(--accent) 0%, transparent 70%);
+}
+.bg-blobs::after {
+  bottom: -200px; left: -150px; width: 550px; height: 550px;
+  background: radial-gradient(circle, var(--accent-2) 0%, transparent 70%);
+  animation-delay: -9s;
+}
+@keyframes blobFloat {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50%      { transform: translate(40px, -30px) scale(1.1); }
+}
 
-    /* ── VIDEO ── */
-    .video-wrap{flex:1;position:relative;background:#000;overflow:hidden;}
-    #remote{width:100%;height:100%;object-fit:cover;display:block;background:#000;}
+/* ── App layout ─────────────────────────────────────────────── */
+.app {
+  position: relative; z-index: 1;
+  height: 100vh; height: 100dvh;
+  display: grid;
+  grid-template-rows: auto 1fr;
+}
 
-    #overlay{
-      position:absolute;inset:0;display:flex;flex-direction:column;
-      align-items:center;justify-content:center;gap:14px;
-      background:var(--surface);z-index:4;
-    }
-    #overlay.hidden{display:none;}
-    .ring{width:54px;height:54px;border-radius:50%;border:3px solid var(--border);border-top-color:var(--accent);animation:spin 1s linear infinite;}
-    @keyframes spin{to{transform:rotate(360deg)}}
-    #overlay p{font-family:var(--fh);font-size:14px;color:var(--muted);text-align:center;padding:0 20px;}
-    #overlay small{font-size:12px;color:var(--muted);opacity:.6;}
+/* ── Top bar ─────────────────────────────────────────────────── */
+.topbar {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 14px 22px;
+  gap: 12px;
+}
+.brand { display:flex; align-items:center; gap:10px; }
+.brand .dot {
+  width: 9px; height: 9px; background: var(--accent); border-radius: 50%;
+  box-shadow: 0 0 12px var(--accent);
+}
+.brand h1 {
+  margin: 0; font-family: 'Syne', sans-serif; font-weight: 700;
+  font-size: 19px; letter-spacing: 0.5px;
+}
+.top-pills { display:flex; gap:8px; align-items:center; }
+.pill {
+  background: var(--surface);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 0.5px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--text-2);
+  display: inline-flex; align-items: center; gap: 6px;
+  font-weight: 500;
+}
+.pill .live-dot {
+  width:6px; height:6px; background: var(--good); border-radius:50%;
+  box-shadow: 0 0 8px var(--good);
+  animation: livePulse 2s ease-in-out infinite;
+}
+@keyframes livePulse {
+  0%, 100% { opacity: 1; } 50% { opacity: 0.5; }
+}
 
-    .pip{
-      position:absolute;bottom:12px;left:12px;
-      width:110px;height:74px;border-radius:10px;overflow:hidden;
-      border:2px solid rgba(108,99,255,.5);
-      box-shadow:0 6px 20px rgba(0,0,0,.6);z-index:5;
-    }
-    #local{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);}
-    .name-tag{
-      position:absolute;top:12px;left:12px;
-      background:rgba(0,0,0,.5);backdrop-filter:blur(8px);
-      padding:3px 10px;border-radius:999px;font-size:12px;
-      border:1px solid var(--border);opacity:0;transition:opacity .3s;z-index:5;
-    }
-    .name-tag.visible{opacity:1;}
+/* ── Main grid ──────────────────────────────────────────────── */
+.main {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 14px;
+  padding: 0 22px 22px;
+  overflow: hidden;
+  min-height: 0;
+}
 
-    /* ── SIDE PANEL (desktop) ── */
-    .side-panel{
-      width:300px;flex-shrink:0;display:flex;flex-direction:column;
-      background:var(--panel);border-left:1px solid var(--border);
-    }
-    .tabs{display:flex;border-bottom:1px solid var(--border);}
-    .tab{
-      flex:1;padding:13px;text-align:center;font-size:13px;font-weight:500;
-      color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:all .2s;
-    }
-    .tab.active{color:var(--text);border-bottom-color:var(--accent);}
-    .tab-pane{display:none;flex:1;flex-direction:column;overflow:hidden;}
-    .tab-pane.active{display:flex;}
+/* ── Video wrap ─────────────────────────────────────────────── */
+.video-wrap {
+  position: relative;
+  background: linear-gradient(135deg, #2d1f1c 0%, #3d2a26 100%);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  min-height: 0;
+}
+video {
+  width: 100%; height: 100%; object-fit: cover; background: #000;
+  display: block;
+}
+#remote { width: 100%; height: 100%; }
 
-    /* chat */
-    .messages{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:7px;scroll-behavior:smooth;}
-    .messages::-webkit-scrollbar{width:3px;}
-    .messages::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px;}
-    .msg{max-width:84%;padding:7px 11px;border-radius:14px;font-size:13px;line-height:1.5;word-break:break-word;animation:pop .18s ease;}
-    @keyframes pop{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
-    .msg.me  {background:var(--chat-me);color:#fff;align-self:flex-end;border-bottom-right-radius:4px;}
-    .msg.them{background:var(--chat-them);color:var(--text);align-self:flex-start;border-bottom-left-radius:4px;border:1px solid var(--border);}
-    .msg.sys {background:transparent;color:var(--muted);font-size:11px;align-self:center;text-align:center;padding:2px 0;}
-    .chat-bar{padding:10px;border-top:1px solid var(--border);display:flex;gap:7px;align-items:flex-end;}
-    .chat-in{
-      flex:1;background:rgba(255,255,255,.05);border:1px solid var(--border);
-      border-radius:10px;color:var(--text);font-family:var(--fb);
-      font-size:13px;padding:8px 11px;resize:none;max-height:100px;outline:none;
-      transition:border-color .2s;
-    }
-    .chat-in:focus{border-color:var(--accent);}
-    .chat-in::placeholder{color:var(--muted);}
-    .send-btn{
-      width:34px;height:34px;border-radius:10px;background:var(--accent);
-      border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;
-      flex-shrink:0;transition:all .2s;
-    }
-    .send-btn:hover{background:#5a52e0;}
+/* Self preview — LARGE & VISIBLE */
+.self-preview {
+  position: absolute;
+  bottom: 90px;
+  right: 18px;
+  width: 160px; height: 210px;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 2px solid rgba(255,255,255,0.25);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  background: #000;
+  z-index: 9;
+  transition: transform .2s ease;
+}
+.self-preview:hover { transform: scale(1.02); }
+.self-preview video { transform: scaleX(-1); /* mirror local */ }
+.self-label {
+  position: absolute; bottom: 6px; left: 6px;
+  background: rgba(0,0,0,0.5); backdrop-filter: blur(10px);
+  color: #fff; font-size: 10px; padding: 2px 7px; border-radius: 6px;
+  font-weight: 500;
+}
 
-    /* options */
-    .opts{padding:12px;gap:10px;flex-direction:column;overflow-y:auto;}
-    .card{background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:12px;padding:13px;}
-    .card h4{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px;font-family:var(--fh);}
-    .stat{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px;}
-    .stat:last-child{border:none;}
-    .stat span:first-child{color:var(--muted);}
-    .arow{display:flex;flex-direction:column;gap:7px;}
-    .abtn{
-      display:flex;align-items:center;gap:9px;padding:10px 13px;border-radius:12px;
-      border:1px solid var(--border);background:rgba(255,255,255,.03);
-      color:var(--text);font-family:var(--fb);font-size:13px;cursor:pointer;
-      transition:all .18s;width:100%;text-align:left;
-    }
-    .abtn:hover{background:rgba(255,255,255,.07);}
-    .abtn.danger{color:var(--red);border-color:rgba(239,68,68,.2);}
-    .abtn.danger:hover{background:rgba(239,68,68,.08);}
-    .abtn.warn{color:var(--amber);border-color:rgba(245,158,11,.2);}
-    .abtn.warn:hover{background:rgba(245,158,11,.08);}
+/* Country flag pill — on remote video */
+.country-tag {
+  position: absolute; top: 16px; left: 16px; z-index: 4;
+  background: rgba(255,255,255,0.95); color: #1a1614;
+  padding: 7px 14px; border-radius: 999px;
+  display: flex; align-items: center; gap: 7px;
+  font-weight: 600; font-size: 13px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  opacity: 0; transition: opacity .3s;
+}
+.country-tag.visible { opacity: 1; }
+.country-tag .flag { font-size: 18px; line-height: 1; }
 
-    /* ── BOTTOM BAR ── */
-    .ctrl-bar{
-      position:fixed;bottom:0;left:0;right:0;height:var(--bh);
-      display:flex;align-items:center;justify-content:center;gap:8px;
-      background:var(--surface);border-top:1px solid var(--border);
-      padding:0 12px;z-index:30;
-    }
-    .btn{
-      display:flex;align-items:center;justify-content:center;gap:5px;
-      height:42px;padding:0 16px;border-radius:999px;border:none;cursor:pointer;
-      font-family:var(--fb);font-size:13px;font-weight:500;
-      transition:all .18s;outline:none;white-space:nowrap;flex-shrink:0;
-    }
-    .btn svg{width:15px;height:15px;flex-shrink:0;}
-    .ico{width:42px;height:42px;padding:0;border-radius:50%;}
-    .primary{background:var(--accent);color:#fff;}
-    .primary:hover{background:#5a52e0;}
-    .danger-btn{background:var(--red);color:#fff;}
-    .ghost{background:rgba(255,255,255,.07);color:var(--text);border:1px solid var(--border);}
-    .ghost:hover{background:rgba(255,255,255,.13);}
-    .muted-state{background:rgba(239,68,68,.15);color:var(--red);border:1px solid rgba(239,68,68,.3);}
-    .next-btn{background:linear-gradient(135deg,var(--accent),#9b7dff);color:#fff;font-weight:600;}
-    .next-btn:hover{transform:scale(1.05);box-shadow:0 4px 16px rgba(108,99,255,.4);}
-    .next-btn:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none;}
-    .div{width:1px;height:24px;background:var(--border);flex-shrink:0;}
+/* Rating badge — on remote video */
+.rating-tag {
+  position: absolute; top: 16px; left: 152px; z-index: 4;
+  background: rgba(0,0,0,0.55); backdrop-filter: blur(20px);
+  border: 0.5px solid rgba(255,255,255,0.2);
+  color: #fff; padding: 7px 12px; border-radius: 999px;
+  display: flex; align-items: center; gap: 5px;
+  font-weight: 600; font-size: 12px;
+  opacity: 0; transition: opacity .3s;
+}
+.rating-tag.visible { opacity: 1; }
+.rating-tag .star { color: var(--warn); }
 
-    /* ── MODAL ── */
-    .modal-bg{
-      position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);
-      z-index:100;display:flex;align-items:center;justify-content:center;
-      opacity:0;pointer-events:none;transition:opacity .2s;padding:16px;
-    }
-    .modal-bg.open{opacity:1;pointer-events:all;}
-    .modal{
-      background:var(--panel);border:1px solid var(--border);border-radius:16px;
-      padding:22px;width:100%;max-width:340px;transform:scale(.95);transition:transform .2s;
-    }
-    .modal-bg.open .modal{transform:scale(1);}
-    .modal h3{font-family:var(--fh);font-size:16px;margin-bottom:5px;}
-    .modal p{font-size:13px;color:var(--muted);margin-bottom:14px;}
-    .modal select,.modal textarea{
-      width:100%;background:rgba(255,255,255,.05);border:1px solid var(--border);
-      border-radius:8px;color:var(--text);font-family:var(--fb);
-      font-size:13px;padding:8px 10px;margin-bottom:9px;outline:none;
-    }
-    .modal select option{background:var(--panel);}
-    .modal textarea{resize:none;height:75px;}
-    .modal-btns{display:flex;gap:8px;justify-content:flex-end;margin-top:4px;}
+/* Interest tags on video */
+.peer-interests {
+  position: absolute; top: 16px; right: 16px; z-index: 4;
+  display: flex; flex-wrap: wrap; gap: 5px; max-width: 60%;
+  justify-content: flex-end;
+}
+.peer-interest {
+  background: rgba(255,255,255,0.18); backdrop-filter: blur(14px);
+  border: 0.5px solid rgba(255,255,255,0.3);
+  color: #fff; font-size: 11px; padding: 4px 11px; border-radius: 999px;
+  font-weight: 500;
+  animation: tagPop .4s ease;
+}
+.peer-interest.shared {
+  background: var(--accent); border-color: var(--accent);
+  color: #1a1614;
+}
+@keyframes tagPop {
+  from { opacity: 0; transform: scale(0.8); }
+  to   { opacity: 1; transform: scale(1); }
+}
 
-    /* ── TOAST — sits above bottom bar, never covers buttons ── */
-    #toast{
-      position:fixed;
-      bottom:calc(var(--bh) + 10px);
-      left:50%;transform:translateX(-50%) translateY(40px);
-      background:rgba(20,20,30,.95);border:1px solid var(--border);
-      border-radius:10px;padding:9px 18px;font-size:13px;
-      box-shadow:0 4px 20px rgba(0,0,0,.5);
-      z-index:40;pointer-events:none;white-space:nowrap;
-      transition:transform .28s cubic-bezier(.34,1.56,.64,1),opacity .28s;
-      opacity:0;
-    }
-    #toast.show{transform:translateX(-50%) translateY(0);opacity:1;}
+/* Timer pill */
+.timer-tag {
+  position: absolute; bottom: 16px; left: 16px; z-index: 4;
+  background: rgba(0,0,0,0.55); backdrop-filter: blur(20px);
+  color: #fff; font-size: 12px; padding: 6px 12px; border-radius: 999px;
+  font-weight: 500; font-variant-numeric: tabular-nums;
+  display: flex; align-items: center; gap: 6px;
+}
 
-    /* ── MOBILE ── */
-    @media(max-width:700px){
-      :root{--bh:64px;}
-      .chat-fab{display:flex;}
-      #timerDisplay{display:none;}
-      .side-panel{display:none;}
+/* Overlay (searching/idle) */
+.overlay {
+  position: absolute; inset: 0; z-index: 3;       /* was z-index: 6 */
+  background: linear-gradient(135deg, rgba(45,31,28,0.85), rgba(61,42,38,0.85));
+  backdrop-filter: blur(20px);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center;
+  transition: opacity .3s;
+  pointer-events: none;                            /* NEW: clicks pass through */
+}
+.overlay.hidden { opacity: 0; pointer-events: none; }
+.overlay .spinner {
+  width: 56px; height: 56px;
+  border: 3px solid rgba(255,255,255,0.15);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 22px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.overlay-msg {
+  font-size: 16px; font-weight: 500; color: var(--text);
+  margin-bottom: 6px; font-family: 'Syne', sans-serif;
+}
+.overlay-sub {
+  font-size: 13px; color: var(--text-3);
+}
 
-      /* drawer slides up from above bottom bar */
-      .mobile-drawer{
-        position:fixed;left:0;right:0;bottom:var(--bh);height:55vh;
-        background:var(--panel);border-top:1px solid var(--border);
-        border-radius:16px 16px 0 0;
-        display:flex;flex-direction:column;
-        transform:translateY(100%);
-        transition:transform .3s cubic-bezier(.34,1.56,.64,1);
-        z-index:25;
-      }
-      .mobile-drawer.open{transform:translateY(0);}
-      .drawer-handle{
-        width:36px;height:4px;background:var(--border);
-        border-radius:2px;margin:10px auto 6px;flex-shrink:0;
-      }
+/* ── Controls bar ───────────────────────────────────────────── */
+.controls {
+  position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%);
+  display: flex; gap: 8px; z-index: 10;             /* was z-index: 5 */
+}
 
-      /* controls: no wrap, scroll if needed */
-      .ctrl-bar{gap:6px;padding:0 8px;flex-wrap:nowrap;overflow-x:auto;}
-      .ctrl-bar::-webkit-scrollbar{display:none;}
-      .btn{height:40px;padding:0 12px;font-size:12px;}
-      .ico{width:40px;height:40px;}
-      .btn svg{width:14px;height:14px;}
-      .hide-mob{display:none!important;}
-      .pip{width:88px;height:60px;}
-    }
+.ctrl {
+  width: 46px; height: 46px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.10);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  border: 0.5px solid rgba(255,255,255,0.2);
+  color: #fff;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all .15s ease;
+}
+.ctrl:hover { background: rgba(255,255,255,0.18); transform: translateY(-1px); }
+.ctrl:active { transform: scale(0.95); }
+.ctrl svg { width: 19px; height: 19px; }
+.ctrl.muted-state {
+  background: var(--bad); border-color: var(--bad);
+}
+.ctrl.danger {
+  background: var(--bad); border-color: var(--bad);
+}
+.ctrl.primary {
+  width: auto; padding: 0 22px;
+  background: #fff; color: #1a1614;
+  font-weight: 600; font-size: 13px;
+  font-family: 'DM Sans', sans-serif;
+  border: none;
+}
+.ctrl.primary:hover { background: #f5f5f5; }
+.ctrl.next-btn {
+  width: auto; padding: 0 20px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  border: none; color: #fff; font-weight: 600; font-size: 13px;
+}
+.ctrl.next-btn:disabled {
+  background: rgba(255,255,255,0.08); color: var(--text-3); cursor: not-allowed;
+}
 
-    *{scrollbar-width:thin;scrollbar-color:var(--border) transparent;}
-  </style>
+/* ── Side panel ─────────────────────────────────────────────── */
+.side-panel {
+  background: var(--surface);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-lg);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+.tabs {
+  display: flex;
+  padding: 6px; gap: 4px;
+  border-bottom: 0.5px solid var(--border);
+}
+.tab {
+  flex: 1; padding: 9px;
+  background: transparent; border: none;
+  color: var(--text-2); font-size: 12px; font-weight: 500;
+  cursor: pointer; border-radius: 10px;
+  transition: all .15s ease;
+  font-family: inherit;
+}
+.tab:hover { color: var(--text); }
+.tab.active {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.pane { display: none; flex: 1; flex-direction: column; min-height: 0; }
+.pane.active { display: flex; }
+
+/* Chat */
+.msgs {
+  flex: 1; overflow-y: auto; padding: 14px;
+  display: flex; flex-direction: column; gap: 8px;
+  scroll-behavior: smooth;
+}
+.msgs::-webkit-scrollbar { width: 4px; }
+.msgs::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 2px; }
+.msg {
+  padding: 8px 12px; border-radius: 12px;
+  font-size: 13px; max-width: 85%; word-wrap: break-word;
+  line-height: 1.45;
+}
+.msg.me {
+  align-self: flex-end;
+  background: var(--accent); color: #fff;
+  border-bottom-right-radius: 4px;
+}
+.msg.them {
+  align-self: flex-start;
+  background: var(--surface-2); color: var(--text);
+  border-bottom-left-radius: 4px;
+}
+.msg.sys {
+  align-self: center;
+  background: transparent; color: var(--text-3);
+  font-size: 11px; font-style: italic;
+  padding: 4px 8px;
+}
+.chat-input {
+  padding: 10px; border-top: 0.5px solid var(--border);
+  display: flex; gap: 8px; align-items: flex-end;
+}
+.chat-input textarea {
+  flex: 1; resize: none;
+  background: var(--surface-2);
+  border: 0.5px solid var(--border);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-family: inherit; font-size: 13px;
+  min-height: 36px; max-height: 100px;
+  outline: none;
+}
+.chat-input textarea:focus { border-color: var(--accent); }
+.chat-input button {
+  background: var(--accent); color: #fff; border: none;
+  width: 36px; height: 36px; border-radius: 10px;
+  cursor: pointer; font-size: 16px;
+  display: flex; align-items: center; justify-content: center;
+}
+.chat-input button:hover { background: var(--accent-2); }
+
+/* Options pane */
+.opts {
+  padding: 14px;
+  overflow-y: auto;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.opt-section h3 {
+  margin: 0 0 8px; font-size: 12px; text-transform: uppercase;
+  letter-spacing: 0.8px; color: var(--text-3); font-weight: 600;
+}
+.opt-row {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 13px; color: var(--text-2);
+  padding: 5px 0;
+}
+.opt-row .val { color: var(--text); font-weight: 500; font-variant-numeric: tabular-nums; }
+.opt-btn {
+  display: block; width: 100%;
+  background: var(--surface-2); border: 0.5px solid var(--border);
+  color: var(--text);
+  padding: 9px; border-radius: 10px; font-family: inherit; font-size: 12px;
+  cursor: pointer; text-align: center; margin-top: 6px; font-weight: 500;
+}
+.opt-btn:hover { background: var(--surface-2); border-color: var(--accent); }
+.opt-btn.danger { color: var(--bad); border-color: rgba(239,68,68,0.3); }
+
+/* My interests display in options */
+.my-interests-display {
+  display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px;
+}
+.my-interest-chip {
+  background: var(--surface-2); border: 0.5px solid var(--border);
+  padding: 3px 9px; border-radius: 999px;
+  font-size: 11px; color: var(--text);
+}
+
+/* ── Setup screen (before Start) ────────────────────────────── */
+.setup-screen {
+  position: fixed; inset: 0; z-index: 100;
+  background: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+  padding: 22px;
+  overflow-y: auto;
+}
+.setup-screen.hidden { display: none; }
+.setup-card {
+  position: relative; z-index: 2;
+  width: 100%; max-width: 480px;
+  background: var(--surface);
+  backdrop-filter: blur(30px);
+  border: 0.5px solid var(--border);
+  border-radius: 22px;
+  padding: 30px;
+  box-shadow: var(--shadow);
+}
+.setup-card h2 {
+  margin: 0 0 6px;
+  font-family: 'Syne', sans-serif; font-weight: 700;
+  font-size: 26px; letter-spacing: 0.3px;
+}
+.setup-card .subtitle {
+  color: var(--text-2); font-size: 13px; margin-bottom: 22px;
+}
+.setup-section {
+  margin-bottom: 20px;
+}
+.setup-section label {
+  display: block; font-size: 11px; text-transform: uppercase;
+  letter-spacing: 0.8px; color: var(--text-3); margin-bottom: 9px;
+  font-weight: 600;
+}
+.interest-grid {
+  display: flex; flex-wrap: wrap; gap: 6px;
+}
+.interest-chip {
+  background: var(--surface-2); border: 0.5px solid var(--border);
+  color: var(--text-2);
+  padding: 6px 12px; border-radius: 999px;
+  font-size: 12px; cursor: pointer;
+  user-select: none;
+  transition: all .15s ease;
+  font-weight: 500;
+}
+.interest-chip:hover { border-color: var(--border-2); color: var(--text); }
+.interest-chip.selected {
+  background: var(--accent); border-color: var(--accent);
+  color: #1a1614; font-weight: 600;
+}
+.custom-input {
+  width: 100%;
+  background: var(--surface-2);
+  border: 0.5px solid var(--border);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 9px 12px;
+  font-family: inherit; font-size: 13px;
+  margin-top: 8px;
+  outline: none;
+}
+.custom-input:focus { border-color: var(--accent); }
+.country-display {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--surface-2);
+  border: 0.5px solid var(--border);
+  padding: 10px 14px;
+  border-radius: 10px;
+}
+.country-display .flag { font-size: 22px; line-height: 1; }
+.country-display .label { font-size: 13px; color: var(--text); font-weight: 500; }
+.country-display .small { font-size: 11px; color: var(--text-3); margin-left: auto; }
+.setup-start {
+  width: 100%;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  border: none; color: #fff;
+  padding: 13px;
+  border-radius: 12px;
+  font-family: inherit; font-size: 14px; font-weight: 600;
+  cursor: pointer;
+  letter-spacing: 0.3px;
+  margin-top: 6px;
+  transition: transform .15s ease;
+}
+.setup-start:hover { transform: translateY(-1px); }
+.setup-start:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+/* ── Rating modal (slides in from bottom) ───────────────────── */
+.rating-prompt {
+  position: fixed;
+  bottom: 24px; left: 50%; transform: translateX(-50%) translateY(140%);
+  z-index: 200;
+  background: var(--surface);
+  backdrop-filter: blur(30px);
+  border: 0.5px solid var(--border);
+  border-radius: 18px;
+  padding: 16px 20px;
+  display: flex; align-items: center; gap: 14px;
+  box-shadow: var(--shadow);
+  transition: transform .35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.rating-prompt.show { transform: translateX(-50%) translateY(0); }
+.rating-prompt .label { font-size: 13px; color: var(--text); font-weight: 500; }
+.rate-btn {
+  width: 38px; height: 38px; border-radius: 50%;
+  background: var(--surface-2); border: 0.5px solid var(--border);
+  cursor: pointer; font-size: 16px;
+  display: flex; align-items: center; justify-content: center;
+  transition: all .15s ease;
+}
+.rate-btn:hover { transform: scale(1.1); }
+.rate-btn.up:hover { background: var(--good); border-color: var(--good); }
+.rate-btn.down:hover { background: var(--bad); border-color: var(--bad); }
+.rate-skip {
+  background: transparent; border: none; color: var(--text-3);
+  font-size: 12px; cursor: pointer; padding: 4px 8px;
+  font-family: inherit;
+}
+.rate-skip:hover { color: var(--text); }
+
+/* ── Report modal ───────────────────────────────────────────── */
+.modal {
+  position: fixed; inset: 0; z-index: 300;
+  background: rgba(0,0,0,0.6); backdrop-filter: blur(6px);
+  display: none; align-items: center; justify-content: center;
+  padding: 22px;
+}
+.modal.open { display: flex; }
+.modal-content {
+  background: var(--bg-2);
+  border: 0.5px solid var(--border);
+  border-radius: 18px;
+  padding: 22px;
+  width: 100%; max-width: 380px;
+}
+.modal-content h3 {
+  margin: 0 0 14px; font-family: 'Syne', sans-serif;
+  font-size: 18px; font-weight: 600;
+}
+.modal-content select, .modal-content textarea {
+  width: 100%;
+  background: var(--surface-2); border: 0.5px solid var(--border);
+  color: var(--text); border-radius: 10px;
+  padding: 9px 12px; font-family: inherit; font-size: 13px;
+  margin-bottom: 12px; outline: none;
+}
+.modal-content textarea { resize: vertical; min-height: 70px; }
+.modal-actions {
+  display: flex; gap: 8px; justify-content: flex-end;
+}
+.btn {
+  padding: 9px 16px; border-radius: 10px; border: none;
+  cursor: pointer; font-family: inherit; font-size: 13px; font-weight: 500;
+}
+.btn-ghost { background: transparent; color: var(--text-2); }
+.btn-ghost:hover { color: var(--text); }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent-2); }
+
+/* ── Toast ──────────────────────────────────────────────────── */
+.toast {
+  position: fixed;
+  bottom: 100px; left: 50%; transform: translateX(-50%) translateY(20px);
+  background: var(--bg-2); color: var(--text);
+  border: 0.5px solid var(--border);
+  padding: 10px 16px; border-radius: 999px;
+  font-size: 13px; font-weight: 500;
+  z-index: 400; opacity: 0; pointer-events: none;
+  transition: all .25s ease;
+  box-shadow: var(--shadow);
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* Status dot in topbar */
+.status-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--text-3); margin-right: 6px;
+}
+.status-dot.connected { background: var(--good); box-shadow: 0 0 8px var(--good); }
+.status-dot.waiting { background: var(--warn); animation: livePulse 1.5s infinite; }
+
+/* Drawer button (mobile only) */
+.drawer-btn { display: none; }
+
+/* ── Mobile ─────────────────────────────────────────────────── */
+@media (max-width: 820px) {
+  .main { grid-template-columns: 1fr; padding: 0 14px 14px; }
+  .side-panel { display: none; }
+  .topbar { padding: 12px 16px; }
+  .brand h1 { font-size: 17px; }
+  .pill { padding: 5px 10px; font-size: 11px; }
+  .self-preview { width: 100px; height: 135px; bottom: 80px; right: 12px; }
+  .drawer-btn {
+    display: flex; position: fixed; bottom: 18px; right: 18px;
+    width: 50px; height: 50px; border-radius: 50%;
+    background: var(--accent); color: #fff;
+    border: none; cursor: pointer; z-index: 50;
+    align-items: center; justify-content: center;
+    box-shadow: var(--shadow);
+  }
+  .country-tag { top: 12px; left: 12px; padding: 5px 10px; font-size: 12px; }
+  .rating-tag { top: 12px; left: auto; right: 12px; padding: 5px 10px; font-size: 11px; }
+  .peer-interests { top: 50px; right: 12px; max-width: 70%; }
+  .controls { bottom: 14px; gap: 6px; }
+  .ctrl { width: 42px; height: 42px; }
+  .ctrl.primary, .ctrl.next-btn { padding: 0 14px; font-size: 12px; }
+
+  /* Mobile drawer */
+  .drawer {
+    position: fixed; left: 0; right: 0; bottom: -100%;
+    height: 70vh;
+    background: var(--bg-2);
+    border-top: 0.5px solid var(--border);
+    border-radius: 22px 22px 0 0;
+    z-index: 60;
+    transition: bottom .3s ease;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .drawer.open { bottom: 0; }
+  .drawer-handle {
+    width: 36px; height: 4px; background: var(--border-2);
+    border-radius: 2px; margin: 9px auto;
+  }
+  .backdrop {
+    position: fixed; inset: 0; z-index: 55;
+    background: rgba(0,0,0,0.5); display: none;
+  }
+  .setup-card { padding: 22px; }
+  .setup-card h2 { font-size: 22px; }
+}
+
+/* Desktop: hide mobile drawer */
+@media (min-width: 821px) {
+  .drawer, .backdrop, .drawer-btn { display: none !important; }
+}
+</style>
 </head>
 <body>
 
-<!-- HEADER -->
-<header>
-  <div class="logo">Nex<span>Talk</span></div>
-  <div class="pill">
-    <div class="dot" id="statusDot"></div>
-    <span id="statusText">Disconnected</span>
-  </div>
-  <div style="display:flex;align-items:center;gap:8px;">
-    <span id="timerDisplay">00:00</span>
-    <button class="chat-fab" onclick="toggleDrawer()">💬</button>
-  </div>
-</header>
+<div class="bg-blobs"></div>
 
-<!-- MAIN -->
-<div class="main">
-  <!-- VIDEO -->
-  <div class="video-wrap">
-    <video id="remote" autoplay playsinline></video>
-    <div class="name-tag" id="nameTag">Stranger</div>
-    <div id="overlay">
-      <div class="ring"></div>
-      <p id="overlayMsg">Click "Start" to find someone</p>
-      <small>You'll be matched with a random stranger</small>
+<!-- ── SETUP SCREEN ─────────────────────────────────────────── -->
+<div class="setup-screen" id="setupScreen">
+  <div class="setup-card">
+    <h2>Hey there 👋</h2>
+    <div class="subtitle">Tell us a bit about yourself before we find your next chat.</div>
+
+    <div class="setup-section">
+      <label>Your country</label>
+      <div class="country-display">
+        <span class="flag" id="setupFlag">🌍</span>
+        <span class="label" id="setupCountry">Detecting...</span>
+        <span class="small">auto-detected</span>
+      </div>
     </div>
-    <div class="pip"><video id="local" autoplay muted playsinline></video></div>
+
+    <div class="setup-section">
+      <label>Pick your interests (1-5)</label>
+      <div class="interest-grid" id="interestGrid"></div>
+    </div>
+
+    <div class="setup-section">
+      <label>Or add your own (optional)</label>
+      <input
+        type="text" id="customInterest" class="custom-input"
+        placeholder="e.g. anime, hiking, indie games... (comma separated)"
+        autocomplete="off" />
+    </div>
+
+    <button class="setup-start" id="setupStart" onclick="finishSetup()">
+      Start chatting →
+    </button>
+  </div>
+</div>
+
+<!-- ── MAIN APP ─────────────────────────────────────────────── -->
+<div class="app">
+
+  <!-- Top bar -->
+  <div class="topbar">
+    <div class="brand">
+      <div class="dot"></div>
+      <h1>NexTalk</h1>
+    </div>
+    <div class="top-pills">
+      <div class="pill" id="statusPill">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="statusText">Ready</span>
+      </div>
+      <div class="pill"><span id="iCount">0</span> met</div>
+      <div class="pill" id="onlinePill"><span class="live-dot"></span><span id="onlineCount">—</span> online</div>
+    </div>
   </div>
 
-  <!-- SIDE PANEL desktop -->
-  <div class="side-panel">
-    <div class="tabs">
-      <div class="tab active" onclick="switchTab('chat')">💬 Chat</div>
-      <div class="tab" onclick="switchTab('opts')">⚙️ Options</div>
-    </div>
-    <div class="tab-pane active" id="pane-chat">
-      <div class="messages" id="msgs"><div class="msg sys">Connect to a stranger to start chatting</div></div>
-      <div class="chat-bar">
-        <textarea class="chat-in" id="chatIn" placeholder="Say something..." rows="1"
-          onkeydown="handleKey(event)" oninput="resize(this)"></textarea>
-        <button class="send-btn" onclick="sendChat()">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+  <!-- Main area -->
+  <div class="main">
+
+    <div class="video-wrap">
+      <video id="remote" autoplay playsinline></video>
+
+      <!-- Peer info overlays -->
+      <div class="country-tag" id="peerCountry">
+        <span class="flag" id="peerFlag">🌍</span>
+        <span id="peerCountryName">—</span>
+      </div>
+      <div class="rating-tag" id="peerRating">
+        <span class="star">★</span>
+        <span id="peerRatingValue">—</span>
+      </div>
+      <div class="peer-interests" id="peerInterests"></div>
+
+      <!-- Timer -->
+      <div class="timer-tag" id="timerTag" style="display:none;">
+        <span>⏱</span><span id="timerDisplay">00:00</span>
+      </div>
+
+      <!-- Self preview -->
+      <div class="self-preview">
+        <video id="local" autoplay playsinline muted></video>
+        <div class="self-label">You</div>
+      </div>
+
+      <!-- Overlay (searching) -->
+      <div class="overlay" id="overlay">
+        <div class="spinner" id="overlaySpinner"></div>
+        <div class="overlay-msg" id="overlayMsg">Click "Start" to begin</div>
+        <div class="overlay-sub" id="overlaySub"></div>
+      </div>
+
+      <!-- Controls -->
+      <div class="controls">
+        <button class="ctrl" id="micBtn" onclick="toggleMic()" title="Mic">
+          <svg id="micIco" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+            <line x1="12" y1="19" x2="12" y2="23"/>
+            <line x1="8" y1="23" x2="16" y2="23"/>
+          </svg>
+        </button>
+        <button class="ctrl" id="camBtn" onclick="toggleCam()" title="Camera">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="23 7 16 12 23 17 23 7"/>
+            <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+          </svg>
+        </button>
+        <button class="ctrl primary" id="startBtn" onclick="startSession()">Start</button>
+        <button class="ctrl next-btn" id="nextBtn" onclick="nextMatch()" disabled>Next</button>
+        <button class="ctrl danger" id="stopBtn" onclick="stopSession()" style="display:none;" title="Stop">
+          <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
+        </button>
+        <button class="ctrl" onclick="flipCamera()" title="Flip camera">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M23 4v6h-6"/>
+            <path d="M1 20v-6h6"/>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+          </svg>
+        </button>
+        <button class="ctrl" onclick="goFullscreen()" title="Fullscreen">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+          </svg>
         </button>
       </div>
     </div>
-    <div class="tab-pane" id="pane-opts">
-      <div class="opts">
-        <div class="card">
-          <h4>Session</h4>
-          <div class="stat"><span>Status</span><span id="iStatus">Idle</span></div>
-          <div class="stat"><span>Duration</span><span id="iDur">—</span></div>
-          <div class="stat"><span>Met</span><span id="iCount">0</span></div>
-          <div class="stat"><span>Connection</span><span id="iConn">—</span></div>
+
+    <!-- Side panel (desktop) -->
+    <div class="side-panel">
+      <div class="tabs">
+        <button class="tab active" onclick="switchTab('chat')">Chat</button>
+        <button class="tab" onclick="switchTab('opts')">Info</button>
+      </div>
+      <div class="pane active" id="pane-chat">
+        <div class="msgs" id="msgs"></div>
+        <div class="chat-input">
+          <textarea id="chatIn" placeholder="Say hi..." rows="1" oninput="resize(this)" onkeydown="handleKey(event)"></textarea>
+          <button onclick="sendChat()">→</button>
         </div>
-        <div class="card">
-          <h4>Safety</h4>
-          <div class="arow">
-            <button class="abtn warn" onclick="openReport()">⚠️ Report this user</button>
-            <button class="abtn danger" onclick="blockUser()">🚫 Block &amp; skip</button>
+      </div>
+      <div class="pane" id="pane-opts">
+        <div class="opts">
+          <div class="opt-section">
+            <h3>Session</h3>
+            <div class="opt-row"><span>Status</span><span class="val" id="iStatus">Idle</span></div>
+            <div class="opt-row"><span>Duration</span><span class="val" id="iDur">—</span></div>
+            <div class="opt-row"><span>Strangers met</span><span class="val" id="iCount2">0</span></div>
           </div>
-        </div>
-        <div class="card">
-          <h4>Controls</h4>
-          <div class="arow">
-            <button class="abtn" onclick="toggleMic()">🎙️ Toggle microphone</button>
-            <button class="abtn" onclick="toggleCam()">📷 Toggle camera</button>
-            <button class="abtn" onclick="goFullscreen()">⛶ Fullscreen</button>
-            <button class="abtn" onclick="goPiP()">⧉ Picture in picture</button>
+          <div class="opt-section">
+            <h3>Your interests</h3>
+            <div class="my-interests-display" id="myInterestsDisplay"></div>
+            <button class="opt-btn" onclick="editInterests()">Edit interests</button>
+          </div>
+          <div class="opt-section">
+            <h3>Safety</h3>
+            <button class="opt-btn" onclick="openReport()">Report user</button>
+            <button class="opt-btn danger" onclick="blockUser()">Skip & block</button>
           </div>
         </div>
       </div>
     </div>
+
   </div>
 </div>
 
-<!-- MOBILE DRAWER -->
-<div class="mobile-drawer" id="drawer">
+<!-- ── Mobile drawer ────────────────────────────────────────── -->
+<button class="drawer-btn" onclick="toggleDrawer()" aria-label="Open chat">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22">
+    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+  </svg>
+</button>
+<div class="backdrop" id="backdrop" onclick="closeDrawer()"></div>
+<div class="drawer" id="drawer">
   <div class="drawer-handle"></div>
   <div class="tabs">
-    <div class="tab active" onclick="switchMobileTab('chat')">💬 Chat</div>
-    <div class="tab" onclick="switchMobileTab('opts')">⚙️ Options</div>
+    <button class="tab active" onclick="switchMobileTab('chat')">Chat</button>
+    <button class="tab" onclick="switchMobileTab('opts')">Info</button>
   </div>
-  <div class="tab-pane active" id="mpane-chat">
-    <div class="messages" id="mmsgs"><div class="msg sys">Connect to a stranger to start chatting</div></div>
-    <div class="chat-bar">
-      <textarea class="chat-in" id="mChatIn" placeholder="Say something..." rows="1"
-        onkeydown="handleMKey(event)" oninput="resize(this)"></textarea>
-      <button class="send-btn" onclick="sendMChat()">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-      </button>
+  <div class="pane active" id="mpane-chat">
+    <div class="msgs" id="mmsgs"></div>
+    <div class="chat-input">
+      <textarea id="mChatIn" placeholder="Say hi..." rows="1" oninput="resize(this)" onkeydown="handleMKey(event)"></textarea>
+      <button onclick="sendMChat()">→</button>
     </div>
   </div>
-  <div class="tab-pane" id="mpane-opts">
+  <div class="pane" id="mpane-opts">
     <div class="opts">
-      <div class="card">
-        <h4>Session</h4>
-        <div class="stat"><span>Status</span><span id="miStatus">Idle</span></div>
-        <div class="stat"><span>Duration</span><span id="miDur">—</span></div>
-        <div class="stat"><span>Met</span><span id="miCount">0</span></div>
+      <div class="opt-section">
+        <h3>Session</h3>
+        <div class="opt-row"><span>Status</span><span class="val" id="miStatus">Idle</span></div>
+        <div class="opt-row"><span>Duration</span><span class="val" id="miDur">—</span></div>
+        <div class="opt-row"><span>Strangers met</span><span class="val" id="miCount">0</span></div>
       </div>
-      <div class="card">
-        <h4>Safety</h4>
-        <div class="arow">
-          <button class="abtn warn" onclick="openReport()">⚠️ Report user</button>
-          <button class="abtn danger" onclick="blockUser()">🚫 Block &amp; skip</button>
-        </div>
-      </div>
-      <div class="card">
-        <h4>Controls</h4>
-        <div class="arow">
-          <button class="abtn" onclick="toggleMic()">🎙️ Toggle microphone</button>
-          <button class="abtn" onclick="toggleCam()">📷 Toggle camera</button>
-          <button class="abtn" onclick="flipCamera()">🔄 Flip camera</button>
-        </div>
+      <div class="opt-section">
+        <h3>Safety</h3>
+        <button class="opt-btn" onclick="openReport()">Report user</button>
+        <button class="opt-btn danger" onclick="blockUser()">Skip & block</button>
       </div>
     </div>
   </div>
 </div>
-<div id="backdrop" onclick="closeDrawer()"
-  style="display:none;position:fixed;inset:0;z-index:24;background:rgba(0,0,0,.45)"></div>
 
-<!-- BOTTOM BAR -->
-<div class="ctrl-bar">
-  <button class="btn primary" id="startBtn" onclick="startSession()">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5,3 19,12 5,21"/></svg>
-    Start
-  </button>
-  <button class="btn danger-btn" id="stopBtn" onclick="stopSession()" style="display:none">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
-    Stop
-  </button>
-
-  <div class="div"></div>
-
-  <button class="btn ghost ico" id="micBtn" onclick="toggleMic()" title="Mic">
-    <svg id="micIco" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-      <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-      <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-      <line x1="12" y1="19" x2="12" y2="23"/>
-      <line x1="8" y1="23" x2="16" y2="23"/>
-    </svg>
-  </button>
-
-  <button class="btn ghost ico" id="camBtn" onclick="toggleCam()" title="Camera">
-    <svg id="camIco" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-      <path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/>
-    </svg>
-  </button>
-
-  <!-- Flip camera — mobile only -->
-  <button class="btn ghost ico hide-mob" id="flipBtn" onclick="flipCamera()" title="Flip camera" style="display:none">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-      <path d="M1 4v6h6"/><path d="M23 20v-6h-6"/>
-      <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/>
-    </svg>
-  </button>
-
-  <div class="div"></div>
-
-  <button class="btn next-btn" id="nextBtn" onclick="nextMatch()" disabled>Next →</button>
-
-  <div class="div hide-mob"></div>
-  <button class="btn ghost ico hide-mob" onclick="goFullscreen()">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
-  </button>
-  <button class="btn ghost ico hide-mob" onclick="goPiP()">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><rect x="12" y="10" width="8" height="6" rx="1"/></svg>
-  </button>
+<!-- ── Rating prompt ───────────────────────────────────────── -->
+<div class="rating-prompt" id="ratingPrompt">
+  <span class="label">How was that chat?</span>
+  <button class="rate-btn up"   onclick="ratePeer(1)"  title="Good">👍</button>
+  <button class="rate-btn down" onclick="ratePeer(-1)" title="Bad">👎</button>
+  <button class="rate-skip" onclick="hideRating()">skip</button>
 </div>
 
-<!-- REPORT MODAL -->
-<div class="modal-bg" id="reportModal">
-  <div class="modal">
-    <h3>Report User</h3>
-    <p>Your report is anonymous and helps keep NexTalk safe.</p>
+<!-- ── Report modal ────────────────────────────────────────── -->
+<div class="modal" id="reportModal">
+  <div class="modal-content">
+    <h3>Report user</h3>
     <select id="reportReason">
       <option value="">Select a reason...</option>
-      <option value="nudity">Nudity / Sexual content</option>
-      <option value="harassment">Harassment / Bullying</option>
-      <option value="spam">Spam / Bot</option>
-      <option value="minors">Inappropriate with minors</option>
+      <option value="nudity">Nudity / sexual content</option>
+      <option value="hate">Hate / harassment</option>
+      <option value="violence">Violence / threats</option>
+      <option value="minor">Underage user</option>
       <option value="other">Other</option>
     </select>
-    <textarea id="reportDetails" placeholder="Additional details (optional)..."></textarea>
-    <div class="modal-btns">
-      <button class="btn ghost" onclick="closeReport()" style="height:36px;font-size:13px">Cancel</button>
-      <button class="btn danger-btn" onclick="submitReport()" style="height:36px;font-size:13px">Submit</button>
+    <textarea id="reportDetails" placeholder="Optional: more details..."></textarea>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeReport()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitReport()">Submit</button>
     </div>
   </div>
 </div>
 
-<div id="toast"></div>
+<div class="toast" id="toast"></div>
 
-<script>
-// Show flip button only on mobile/touch devices
-if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
-  document.getElementById('flipBtn').style.display = 'flex';
-  document.getElementById('flipBtn').classList.remove('hide-mob');
-}
-</script>
-<script src="app.js"></script>
+<script src="/app.js"></script>
 </body>
 </html>

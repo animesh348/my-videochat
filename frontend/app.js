@@ -1,27 +1,24 @@
-// ── ICE CONFIG — Free Open Relay TURN (no account needed) ────────
+// ─── CURATED INTERESTS ────────────────────────────────────────
+const CURATED_INTERESTS = [
+  "music", "gaming", "movies", "anime", "books", "art",
+  "travel", "food", "sports", "fitness", "tech", "coding",
+  "photography", "fashion", "memes", "philosophy", "science", "history",
+  "languages", "cars", "pets", "dance", "writing", "design",
+  "podcasts", "crypto", "startups", "psychology", "nature", "diy"
+];
+
+// ─── ICE CONFIG ───────────────────────────────────────────────
 const ICE = {
   iceServers: [
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun1.l.google.com:19302" },
-    {
-      urls: "turn:openrelay.metered.ca:80",
-      username: "openrelayproject",
-      credential: "openrelayproject"
-    },
-    {
-      urls: "turn:openrelay.metered.ca:443",
-      username: "openrelayproject",
-      credential: "openrelayproject"
-    },
-    {
-      urls: "turn:openrelay.metered.ca:443?transport=tcp",
-      username: "openrelayproject",
-      credential: "openrelayproject"
-    }
+    { urls: "turn:openrelay.metered.ca:80",  username: "openrelayproject", credential: "openrelayproject" },
+    { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
+    { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" }
   ]
 };
 
-// ── STATE ────────────────────────────────────────────────────────
+// ─── STATE ────────────────────────────────────────────────────
 let ws, pc, stream;
 let roomId = null, myRole = null;
 let micOn = true, camOn = true;
@@ -31,15 +28,131 @@ let timerStart = null, timerInterval = null;
 let retries = 0;
 let usingFrontCam = true;
 
-// NEW: track connection lifecycle so we don't show "error" when it's
-// really just "server waking up" or "no one online yet"
-let hasEverConnected = false;   // true after first successful ws.onopen
-let intentionalClose = false;   // true when WE closed the socket (stop/next)
-let waitingForPeer = false;     // true when server told us to wait
+let hasEverConnected = false;
+let intentionalClose = false;
+let waitingForPeer = false;
 
-// ── BOOT ────────────────────────────────────────────────────────
-window.addEventListener('load', () => startCamera(true));
+// Profile
+let clientId = null;
+let myCountry = { code: "", name: "Unknown", flag: "🌍" };
+let myInterests = [];
+let peerInfo = null;     // {client_id, country_code, country_name, interests, rating_avg, rating_count}
+let lastPeerClientId = null; // for rating prompt after disconnect
 
+// ─── BOOT ─────────────────────────────────────────────────────
+window.addEventListener('load', async () => {
+  console.log('[NexTalk] booting...');
+  initClientId();
+  // Always show setup on every load (until user picks interests)
+  document.getElementById('setupScreen').classList.remove('hidden');
+  renderInterestGrid();
+  await startCamera(true);
+  detectCountry();   // run in background, don't block UI
+  pollOnlineCount();
+  setInterval(pollOnlineCount, 15000);
+  console.log('[NexTalk] boot complete');
+});
+
+function initClientId() {
+  clientId = localStorage.getItem('nextalk_cid');
+  if (!clientId) {
+    clientId = 'c_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+    localStorage.setItem('nextalk_cid', clientId);
+  }
+}
+
+async function detectCountry() {
+  try {
+    const r = await fetch('https://ipapi.co/json/', { cache: 'no-store' });
+    if (!r.ok) throw new Error('geoip failed');
+    const j = await r.json();
+    myCountry.code = (j.country_code || '').toUpperCase();
+    myCountry.name = j.country_name || 'Unknown';
+    myCountry.flag = codeToFlag(myCountry.code);
+  } catch (e) {
+    console.warn('[NexTalk] country detect failed:', e);
+    myCountry = { code: '', name: 'Unknown', flag: '🌍' };
+  }
+  const flagEl = document.getElementById('setupFlag');
+  const nameEl = document.getElementById('setupCountry');
+  if (flagEl) flagEl.textContent = myCountry.flag;
+  if (nameEl) nameEl.textContent = myCountry.name;
+}
+
+function codeToFlag(code) {
+  if (!code || code.length !== 2) return '🌍';
+  const A = 0x1F1E6;
+  return String.fromCodePoint(
+    A + (code.charCodeAt(0) - 65),
+    A + (code.charCodeAt(1) - 65)
+  );
+}
+
+function renderInterestGrid() {
+  const grid = document.getElementById('interestGrid');
+  grid.innerHTML = '';
+  CURATED_INTERESTS.forEach(tag => {
+    const el = document.createElement('div');
+    el.className = 'interest-chip';
+    el.textContent = tag;
+    el.onclick = () => toggleInterest(el, tag);
+    grid.appendChild(el);
+  });
+}
+
+function toggleInterest(el, tag) {
+  if (el.classList.contains('selected')) {
+    el.classList.remove('selected');
+    myInterests = myInterests.filter(i => i !== tag);
+  } else {
+    const customs = getCustomInterests();
+    if (myInterests.length + customs.length >= 5) {
+      toast('Max 5 interests'); return;
+    }
+    el.classList.add('selected');
+    myInterests.push(tag);
+  }
+}
+
+function getCustomInterests() {
+  const raw = document.getElementById('customInterest').value || '';
+  return raw.split(',').map(s => s.trim().toLowerCase()).filter(s => s && s.length <= 25);
+}
+
+function finishSetup() {
+  const customs = getCustomInterests();
+  const all = [...new Set([...myInterests, ...customs])].slice(0, 5);
+  myInterests = all;
+  if (all.length === 0) {
+    toast('Pick at least 1 interest'); return;
+  }
+  renderMyInterestsInOptions();
+  document.getElementById('setupScreen').classList.add('hidden');
+}
+
+function renderMyInterestsInOptions() {
+  const box = document.getElementById('myInterestsDisplay');
+  if (!box) return;
+  box.innerHTML = '';
+  myInterests.forEach(i => {
+    const el = document.createElement('span');
+    el.className = 'my-interest-chip';
+    el.textContent = i;
+    box.appendChild(el);
+  });
+}
+
+function editInterests() {
+  // Re-show setup, restore current selection
+  document.getElementById('setupScreen').classList.remove('hidden');
+  document.querySelectorAll('.interest-chip').forEach(el => {
+    el.classList.toggle('selected', myInterests.includes(el.textContent));
+  });
+  const customs = myInterests.filter(i => !CURATED_INTERESTS.includes(i));
+  document.getElementById('customInterest').value = customs.join(', ');
+}
+
+// ─── CAMERA ───────────────────────────────────────────────────
 async function startCamera(front) {
   try {
     if (stream) stream.getTracks().forEach(t => t.stop());
@@ -62,12 +175,15 @@ async function startCamera(front) {
 
 const wsUrl = () => `${location.protocol==='https:'?'wss':'ws'}://${location.host}/ws`;
 
-// ── SESSION ──────────────────────────────────────────────────────
+// ─── SESSION ─────────────────────────────────────────────────
 function startSession() {
   if (!stream) { toast('Camera not available'); return; }
+  if (myInterests.length === 0) {
+    document.getElementById('setupScreen').classList.remove('hidden');
+    return;
+  }
   active = true; retries = 0;
-  hasEverConnected = false;
-  intentionalClose = false;
+  hasEverConnected = false; intentionalClose = false;
   document.getElementById('startBtn').style.display = 'none';
   document.getElementById('stopBtn').style.display  = 'flex';
   document.getElementById('nextBtn').disabled = false;
@@ -75,84 +191,93 @@ function startSession() {
 }
 
 function stopSession() {
-  active = false;
-  intentionalClose = true;
+  active = false; intentionalClose = true;
+  // Capture peer for rating before clearing
+  const ratePeerId = peerInfo && peerInfo.client_id;
   hangup();
   if (ws) { try { ws.close(); } catch {} ws = null; }
   stopTimer();
   document.getElementById('startBtn').style.display = 'flex';
   document.getElementById('stopBtn').style.display  = 'none';
   document.getElementById('nextBtn').disabled = true;
-  showOverlay('Click "Start" to find someone');
+  showOverlay('Click "Start" to find someone', '');
   setStatus('idle', 'Disconnected');
   sysMsg('Session ended.');
-  setInfo('Idle', '—', '—');
+  setInfo('Idle', '—');
   waitingForPeer = false;
+  if (ratePeerId) maybeShowRating(ratePeerId);
 }
 
 function nextMatch() {
   if (!active) return;
+  const ratePeerId = peerInfo && peerInfo.client_id;
   hangup();
   sysMsg('Finding next stranger...');
-  // If our socket is still alive, just ask the server to re-queue us.
-  // Otherwise reconnect.
   if (ws && ws.readyState === WebSocket.OPEN) {
     send({ type: 'requeue' });
-    showOverlay('Looking for someone...');
+    showOverlay('Looking for someone...', 'Matching interests...');
     setStatus('waiting', 'Searching...');
   } else {
     connect();
   }
+  if (ratePeerId) maybeShowRating(ratePeerId);
 }
 
-// ── CONNECT ──────────────────────────────────────────────────────
+// ─── CONNECT ─────────────────────────────────────────────────
 function connect() {
-  if (ws) {
-    intentionalClose = true;          // suppress onclose retry for this old socket
-    try { ws.close(); } catch {}
-    ws = null;
-  }
+  if (ws) { intentionalClose = true; try { ws.close(); } catch {} ws = null; }
   intentionalClose = false;
   waitingForPeer = false;
 
-  // Friendlier first-attempt message (handles Render cold start)
   if (!hasEverConnected) {
-    showOverlay('Connecting to server...');
+    showOverlay('Connecting to server...', '');
     setStatus('waiting', 'Connecting...');
   } else {
-    showOverlay('Looking for someone...');
+    showOverlay('Looking for someone...', 'Matching interests...');
     setStatus('waiting', 'Searching...');
   }
 
   try { ws = new WebSocket(wsUrl()); }
-  catch {
-    if (active) setTimeout(connect, 3000);
-    return;
-  }
+  catch { if (active) setTimeout(connect, 3000); return; }
 
-  ws.onopen = () => {
-    retries = 0;
-    hasEverConnected = true;
-    setStatus('waiting', 'Waiting...');
-  };
+  ws.onopen = () => { retries = 0; hasEverConnected = true; };
 
   ws.onmessage = async ({ data }) => {
     let m; try { m = JSON.parse(data); } catch { return; }
 
+    if (m.type === 'ready') {
+      // Server is ready; send our profile to enter matchmaking
+      send({
+        type: 'connect',
+        client_id: clientId,
+        interests: myInterests,
+        country_code: myCountry.code,
+        country_name: myCountry.name,
+      });
+    }
+
     if (m.type === 'waiting') {
       waitingForPeer = true;
-      showOverlay('Waiting for someone to join...');
-      setStatus('waiting', 'No one online — waiting');
+      const onlineN = m.online || 1;
+      const sub = onlineN <= 1
+        ? "You're the only one here. We'll match you as soon as someone joins."
+        : `${onlineN} people online · finding someone with similar interests...`;
+      showOverlay('Waiting for someone to join...', sub);
+      setStatus('waiting', 'Waiting for match');
+      if (m.online) updateOnlineCount(m.online);
     }
 
     if (m.type === 'matched') {
       waitingForPeer = false;
       roomId = m.room; myRole = m.role; metCount++;
+      peerInfo = m.peer || null;
+      lastPeerClientId = peerInfo ? peerInfo.client_id : null;
       updateCounters(); hideOverlay();
       setStatus('connected', 'Connected');
       sysMsg('Connected! Say hello 👋');
-      document.getElementById('nameTag').classList.add('visible');
-      startTimer(); setInfo('Connected', null, 'Connecting...');
+      renderPeerInfo();
+      startTimer(); setInfo('Connected', null);
+      document.getElementById('timerTag').style.display = 'flex';
       await startCall();
     }
 
@@ -162,92 +287,158 @@ function connect() {
     if (m.type === 'chat')   addMsg(m.text, 'them');
 
     if (m.type === 'peer_disconnected') {
+      const ratePeerId = peerInfo && peerInfo.client_id;
       sysMsg('Stranger disconnected.');
       setStatus('waiting', 'Searching...');
-      document.getElementById('nameTag').classList.remove('visible');
+      clearPeerInfo();
       document.getElementById('remote').srcObject = null;
-      stopTimer(); if (pc) { pc.close(); pc = null; }
+      stopTimer(); document.getElementById('timerTag').style.display = 'none';
+      if (pc) { pc.close(); pc = null; }
       roomId = null; myRole = null;
-      setInfo('Stranger left', null, '—');
-      // Don't tear down the socket — just ask server to re-queue us.
+      setInfo('Stranger left', null);
       if (active && ws && ws.readyState === WebSocket.OPEN) {
-        showOverlay('Looking for someone...');
+        showOverlay('Looking for someone...', 'Finding your next match...');
         setTimeout(() => {
-          if (active && ws && ws.readyState === WebSocket.OPEN) {
-            send({ type: 'requeue' });
-          } else if (active) {
-            connect();
-          }
+          if (active && ws && ws.readyState === WebSocket.OPEN) send({ type: 'requeue' });
+          else if (active) connect();
         }, 800);
       } else if (active) {
         setTimeout(connect, 800);
       }
+      if (ratePeerId) maybeShowRating(ratePeerId);
     }
   };
 
-  // SILENT error handling — no scary toast.
-  // The browser fires onerror+onclose together; onclose is where we retry.
-  ws.onerror = () => { /* swallow; onclose will handle reconnect */ };
+  ws.onerror = () => { /* silent */ };
 
   ws.onclose = () => {
-    // Did WE close it (stop button, manual close)? Then do nothing.
     if (intentionalClose) return;
     if (!active) return;
-
     waitingForPeer = false;
-
-    // Cold start case: never connected once. Be patient & quiet.
     if (!hasEverConnected) {
       retries++;
       const delay = Math.min(2000 + retries * 1000, 8000);
-      // Only show a soft hint after a couple of tries (Render cold start ~50s)
-      if (retries === 3) {
-        showOverlay('Server is waking up, please wait...');
-      } else if (retries >= 8) {
-        // Real problem — server unreachable
-        showOverlay('Can\'t reach server. Retrying...');
+      if (retries === 3) showOverlay('Server is waking up, please wait...', 'Free hosting takes ~50s to spin up');
+      else if (retries >= 8) {
+        showOverlay("Can't reach server. Retrying...", '');
         setStatus('waiting', 'Server unreachable');
       }
       setTimeout(() => { if (active) connect(); }, delay);
       return;
     }
-
-    // Mid-session disconnect — quietly reconnect
     retries++;
-    const delay = Math.min(retries * 1000, 5000);
     setStatus('waiting', 'Reconnecting...');
-    showOverlay('Reconnecting...');
-    setTimeout(() => { if (active) connect(); }, delay);
+    showOverlay('Reconnecting...', '');
+    setTimeout(() => { if (active) connect(); }, Math.min(retries * 1000, 5000));
   };
 }
 
-// ── WEBRTC ──────────────────────────────────────────────────────
+// ─── PEER INFO RENDERING ─────────────────────────────────────
+function renderPeerInfo() {
+  if (!peerInfo) return;
+  // Country
+  const flag = codeToFlag(peerInfo.country_code || '');
+  const cName = peerInfo.country_name || 'Unknown';
+  document.getElementById('peerFlag').textContent = flag;
+  document.getElementById('peerCountryName').textContent = cName;
+  document.getElementById('peerCountry').classList.add('visible');
+
+  // Rating (only show if they have at least 1 rating)
+  if (peerInfo.rating_count > 0) {
+    document.getElementById('peerRatingValue').textContent =
+      peerInfo.rating_avg.toFixed(1) + ` (${peerInfo.rating_count})`;
+    document.getElementById('peerRating').classList.add('visible');
+  } else {
+    document.getElementById('peerRating').classList.remove('visible');
+  }
+
+  // Interests
+  const box = document.getElementById('peerInterests');
+  box.innerHTML = '';
+  const mySet = new Set(myInterests.map(i => i.toLowerCase()));
+  (peerInfo.interests || []).slice(0, 5).forEach(tag => {
+    const el = document.createElement('span');
+    el.className = 'peer-interest';
+    if (mySet.has(tag.toLowerCase())) el.classList.add('shared');
+    el.textContent = tag;
+    box.appendChild(el);
+  });
+}
+
+function clearPeerInfo() {
+  document.getElementById('peerCountry').classList.remove('visible');
+  document.getElementById('peerRating').classList.remove('visible');
+  document.getElementById('peerInterests').innerHTML = '';
+  peerInfo = null;
+}
+
+// ─── RATING ──────────────────────────────────────────────────
+let pendingRateTarget = null;
+function maybeShowRating(targetId) {
+  if (!targetId) return;
+  // Only show if we actually had a real chat (timer ran)
+  pendingRateTarget = targetId;
+  const el = document.getElementById('ratingPrompt');
+  el.classList.add('show');
+  // Auto-hide after 5s
+  clearTimeout(window.__rateHideT);
+  window.__rateHideT = setTimeout(() => el.classList.remove('show'), 5000);
+}
+
+function ratePeer(score) {
+  if (!pendingRateTarget) { hideRating(); return; }
+  fetch('/rate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      target_client_id: pendingRateTarget,
+      rater_client_id: clientId,
+      score: score,
+    })
+  }).catch(() => {});
+  toast(score === 1 ? 'Thanks for your feedback! 👍' : 'Got it, thanks 👎');
+  hideRating();
+}
+
+function hideRating() {
+  pendingRateTarget = null;
+  document.getElementById('ratingPrompt').classList.remove('show');
+}
+
+// ─── ONLINE COUNT POLL ───────────────────────────────────────
+async function pollOnlineCount() {
+  try {
+    const r = await fetch('/stats', { cache: 'no-store' });
+    if (!r.ok) return;
+    const j = await r.json();
+    updateOnlineCount(j.online);
+  } catch {}
+}
+function updateOnlineCount(n) {
+  document.getElementById('onlineCount').textContent = n;
+}
+
+// ─── WEBRTC ──────────────────────────────────────────────────
 async function makePC() {
   if (pc) { pc.close(); pc = null; }
   pc = new RTCPeerConnection(ICE);
   stream.getTracks().forEach(t => pc.addTrack(t, stream));
-
   pc.ontrack = e => {
     const v = document.getElementById('remote');
     v.srcObject = e.streams[0];
     v.play().catch(() => {});
   };
-
   pc.onicecandidate = e => {
     if (e.candidate) send({ type:'ice', candidate:e.candidate, room:roomId });
   };
-
   pc.onconnectionstatechange = () => {
     const s = pc.connectionState;
-    if (s === 'connected') { setInfo(null, null, 'Connected ✓'); toast('Video connected!'); }
+    if (s === 'connected') { setInfo(null, null); toast('Video connected!'); }
     if (s === 'failed' && active) {
-      // Don't slam the WS; just re-queue.
       if (ws && ws.readyState === WebSocket.OPEN) {
         send({ type: 'requeue' });
-        showOverlay('Looking for someone...');
-      } else {
-        setTimeout(connect, 1500);
-      }
+        showOverlay('Looking for someone...', '');
+      } else setTimeout(connect, 1500);
     }
   };
 }
@@ -273,23 +464,24 @@ function hangup() {
   if (pc) { pc.close(); pc = null; }
   roomId = null; myRole = null;
   document.getElementById('remote').srcObject = null;
-  document.getElementById('nameTag').classList.remove('visible');
-  stopTimer(); showOverlay('Looking for someone...');
+  clearPeerInfo();
+  stopTimer();
+  document.getElementById('timerTag').style.display = 'none';
+  showOverlay('Looking for someone...', '');
 }
 
 function send(m) { if (ws && ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify(m)); }
 
-// ── CAMERA FLIP ──────────────────────────────────────────────────
+// ─── CAMERA FLIP ─────────────────────────────────────────────
 async function flipCamera() {
   usingFrontCam = !usingFrontCam;
   toast(usingFrontCam ? 'Front camera' : 'Back camera');
   await startCamera(usingFrontCam);
 }
 
-// ── CHAT ────────────────────────────────────────────────────────
+// ─── CHAT ───────────────────────────────────────────────────
 function sendChat()  { _doSend(document.getElementById('chatIn')); }
 function sendMChat() { _doSend(document.getElementById('mChatIn')); }
-
 function _doSend(el) {
   const txt = el.value.trim();
   if (!txt) return;
@@ -298,7 +490,6 @@ function _doSend(el) {
   addMsg(txt, 'me');
   el.value = ''; el.style.height = 'auto';
 }
-
 function addMsg(text, who) {
   ['msgs','mmsgs'].forEach(id => {
     const box = document.getElementById(id); if (!box) return;
@@ -306,9 +497,8 @@ function addMsg(text, who) {
     d.className = `msg ${who}`; d.textContent = text;
     box.appendChild(d); box.scrollTop = box.scrollHeight;
   });
-  if (who === 'them') toast('New message from stranger!');
+  if (who === 'them') toast('New message!');
 }
-
 function sysMsg(text) {
   ['msgs','mmsgs'].forEach(id => {
     const box = document.getElementById(id); if (!box) return;
@@ -317,53 +507,32 @@ function sysMsg(text) {
     box.appendChild(d); box.scrollTop = box.scrollHeight;
   });
 }
-
 function handleKey(e)  { if (e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat();} }
 function handleMKey(e) { if (e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMChat();} }
 function resize(el) { el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,100)+'px'; }
 
-// ── MEDIA TOGGLES ────────────────────────────────────────────────
+// ─── MEDIA TOGGLES ───────────────────────────────────────────
 function toggleMic() {
-  if (!stream) return;
-  micOn = !micOn;
+  if (!stream) return; micOn = !micOn;
   stream.getAudioTracks().forEach(t => t.enabled = micOn);
   const btn = document.getElementById('micBtn');
-  const ico = document.getElementById('micIco');
-  if (micOn) {
-    btn.classList.remove('muted-state'); btn.classList.add('ghost');
-    ico.innerHTML = '<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>';
-    toast('Mic on');
-  } else {
-    btn.classList.remove('ghost'); btn.classList.add('muted-state');
-    ico.innerHTML = '<line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>';
-    toast('Mic muted');
-  }
+  btn.classList.toggle('muted-state', !micOn);
+  toast(micOn ? 'Mic on' : 'Mic muted');
 }
-
 function toggleCam() {
   if (!stream) return; camOn = !camOn;
   stream.getVideoTracks().forEach(t => t.enabled = camOn);
   const btn = document.getElementById('camBtn');
-  if (camOn) { btn.classList.remove('muted-state'); btn.classList.add('ghost'); toast('Camera on'); }
-  else        { btn.classList.remove('ghost'); btn.classList.add('muted-state'); toast('Camera off'); }
+  btn.classList.toggle('muted-state', !camOn);
+  toast(camOn ? 'Camera on' : 'Camera off');
 }
-
 function goFullscreen() {
   const el = document.querySelector('.video-wrap');
   if (!document.fullscreenElement) el.requestFullscreen().catch(()=>toast('Fullscreen not supported'));
   else document.exitFullscreen();
 }
 
-async function goPiP() {
-  const v = document.getElementById('remote');
-  try {
-    if (document.pictureInPictureElement) await document.exitPictureInPicture();
-    else if (v.srcObject) await v.requestPictureInPicture();
-    else toast('No remote video yet');
-  } catch { toast('PiP not supported here'); }
-}
-
-// ── TABS ─────────────────────────────────────────────────────────
+// ─── TABS ────────────────────────────────────────────────────
 function switchTab(name) {
   document.querySelectorAll('.side-panel .tab').forEach((t,i)=>
     t.classList.toggle('active',(i===0&&name==='chat')||(i===1&&name==='opts')));
@@ -371,13 +540,13 @@ function switchTab(name) {
     document.getElementById(id).classList.toggle('active',id===`pane-${name}`));
 }
 function switchMobileTab(name) {
-  document.querySelectorAll('.mobile-drawer .tab').forEach((t,i)=>
+  document.querySelectorAll('.drawer .tab').forEach((t,i)=>
     t.classList.toggle('active',(i===0&&name==='chat')||(i===1&&name==='opts')));
   ['mpane-chat','mpane-opts'].forEach(id=>
     document.getElementById(id).classList.toggle('active',id===`mpane-${name}`));
 }
 
-// ── DRAWER ───────────────────────────────────────────────────────
+// ─── DRAWER ──────────────────────────────────────────────────
 function toggleDrawer() {
   const open = document.getElementById('drawer').classList.toggle('open');
   document.getElementById('backdrop').style.display = open ? 'block' : 'none';
@@ -387,7 +556,7 @@ function closeDrawer() {
   document.getElementById('backdrop').style.display = 'none';
 }
 
-// ── TIMER ────────────────────────────────────────────────────────
+// ─── TIMER ───────────────────────────────────────────────────
 function startTimer() {
   timerStart = Date.now(); stopTimer();
   timerInterval = setInterval(() => {
@@ -401,7 +570,7 @@ function stopTimer() {
   const e = document.getElementById('timerDisplay'); if (e) e.textContent='00:00';
 }
 
-// ── STATUS / INFO ─────────────────────────────────────────────────
+// ─── STATUS / INFO ───────────────────────────────────────────
 function setStatus(type, text) {
   const dot = document.getElementById('statusDot');
   dot.className = 'status-dot';
@@ -409,23 +578,23 @@ function setStatus(type, text) {
   if (type==='waiting')   dot.classList.add('waiting');
   document.getElementById('statusText').textContent = text;
 }
-function setInfo(status, duration, conn) {
+function setInfo(status, duration) {
   if (status!=null)   { ['iStatus','miStatus'].forEach(id=>{const e=document.getElementById(id);if(e)e.textContent=status;}); }
   if (duration!=null) { const e=document.getElementById('iDur');if(e)e.textContent=duration; }
-  if (conn!=null)     { const e=document.getElementById('iConn');if(e)e.textContent=conn; }
 }
 function updateCounters() {
-  ['iCount','miCount'].forEach(id=>{const e=document.getElementById(id);if(e)e.textContent=metCount;});
+  ['iCount','iCount2','miCount'].forEach(id=>{const e=document.getElementById(id);if(e)e.textContent=metCount;});
 }
 
-// ── OVERLAY ──────────────────────────────────────────────────────
-function showOverlay(msg) {
+// ─── OVERLAY ─────────────────────────────────────────────────
+function showOverlay(msg, sub) {
   document.getElementById('overlay').classList.remove('hidden');
   document.getElementById('overlayMsg').textContent = msg;
+  document.getElementById('overlaySub').textContent = sub || '';
 }
 function hideOverlay() { document.getElementById('overlay').classList.add('hidden'); }
 
-// ── REPORT / BLOCK ────────────────────────────────────────────────
+// ─── REPORT / BLOCK ──────────────────────────────────────────
 function openReport()  { if (!roomId){toast('No active session');return;} document.getElementById('reportModal').classList.add('open'); }
 function closeReport() { document.getElementById('reportModal').classList.remove('open'); }
 function submitReport() {
@@ -443,7 +612,7 @@ function blockUser() {
   setTimeout(nextMatch, 800);
 }
 
-// ── TOAST — always above buttons ──────────────────────────────────
+// ─── TOAST ───────────────────────────────────────────────────
 let toastT;
 function toast(msg) {
   const el = document.getElementById('toast');
