@@ -28,6 +28,10 @@ let timerStart = null, timerInterval = null;
 let retries = 0;
 let usingFrontCam = true;
 
+// Camera device tracking (for reliable flip on mobile)
+let videoDevices = [];           // populated after first getUserMedia permission grant
+let currentVideoDeviceId = null;
+
 let hasEverConnected = false;
 let intentionalClose = false;
 let waitingForPeer = false;
@@ -43,11 +47,12 @@ let lastPeerClientId = null; // for rating prompt after disconnect
 window.addEventListener('load', async () => {
   console.log('[NexTalk] booting...');
   initClientId();
-  // Always show setup on every load (until user picks interests)
   document.getElementById('setupScreen').classList.remove('hidden');
   renderInterestGrid();
   await startCamera(true);
-  detectCountry();   // run in background, don't block UI
+  // After permission is granted, labels become available — refresh the list
+  await refreshVideoDevices();
+  detectCountry();
   pollOnlineCount();
   setInterval(pollOnlineCount, 15000);
   console.log('[NexTalk] boot complete');
@@ -153,65 +158,142 @@ function editInterests() {
 }
 
 // ─── CAMERA ───────────────────────────────────────────────────
-// ─── CAMERA ───────────────────────────────────────────────────
-// Called twice: once on boot (front=true, full audio+video), and on flip.
-// We keep the audio track alive across flips so the call doesn't go silent.
+// Enumerate cameras AFTER getting permission, then we can use deviceId
+// for reliable front/back switching on Android (where facingMode is unreliable).
+async function refreshVideoDevices() {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    videoDevices = devices.filter(d => d.kind === 'videoinput');
+    console.log('[NexTalk] cameras found:', videoDevices.length,
+      videoDevices.map(d => d.label || '(no label)').join(' | '));
+  } catch (e) {
+    console.warn('[NexTalk] enumerateDevices failed:', e);
+    videoDevices = [];
+  }
+}
+
+// Find best deviceId for a given facing direction.
+function pickCameraDeviceId(wantFront) {
+  if (!videoDevices.length) return null;
+  if (videoDevices.length === 1) return videoDevices[0].deviceId;
+
+  const frontKeys = ['front', 'user', 'self', 'face'];
+  const backKeys  = ['back', 'environment', 'rear', 'world'];
+  const keys     = wantFront ? frontKeys : backKeys;
+  const antiKeys = wantFront ? backKeys : frontKeys;
+
+  // 1. Label-based match (works once permission is granted on Android)
+  let match = videoDevices.find(d => {
+    const lbl = (d.label || '').toLowerCase();
+    return keys.some(k => lbl.includes(k));
+  });
+  if (match) return match.deviceId;
+
+  // 2. Anti-match: pick anything that isn't the wrong direction
+  match = videoDevices.find(d => {
+    const lbl = (d.label || '').toLowerCase();
+    return !antiKeys.some(k => lbl.includes(k));
+  });
+  if (match) return match.deviceId;
+
+  // 3. Last resort: pick a different camera than the currently active one
+  match = videoDevices.find(d => d.deviceId !== currentVideoDeviceId);
+  return match ? match.deviceId : videoDevices[0].deviceId;
+}
+
+function buildVideoConstraint(front) {
+  const deviceId = pickCameraDeviceId(front);
+  if (deviceId) {
+    return {
+      deviceId: { exact: deviceId },
+      width: { ideal: 1280 },
+      height: { ideal: 720 }
+    };
+  }
+  return {
+    facingMode: front ? 'user' : 'environment',
+    width: { ideal: 1280 },
+    height: { ideal: 720 }
+  };
+}
+
 async function startCamera(front) {
   try {
     const isFlip = !!stream && !!stream.getAudioTracks().length;
+
+    // CRITICAL: stop the old video track BEFORE asking for a new camera.
+    // Android only allows one camera open at a time — if the front camera is
+    // still active, requesting the back camera fails or returns the same camera.
+    if (isFlip) {
+      const oldVideoTrack = stream.getVideoTracks()[0];
+      if (oldVideoTrack) {
+        try { oldVideoTrack.stop(); } catch {}
+        stream.removeTrack(oldVideoTrack);
+      }
+    }
+
     let newVideoStream;
     try {
       newVideoStream = await navigator.mediaDevices.getUserMedia({
         audio: isFlip ? false : true,
-        video: { facingMode: front ? 'user' : 'environment', width:{ideal:1280}, height:{ideal:720} }
+        video: buildVideoConstraint(front)
       });
     } catch (err) {
-      // Fallback: some Android browsers fail with exact facingMode constraint
-      console.warn('[NexTalk] facingMode failed, retrying without:', err);
-      newVideoStream = await navigator.mediaDevices.getUserMedia({
-        audio: isFlip ? false : true,
-        video: true
-      });
+      console.warn('[NexTalk] primary getUserMedia failed:', err);
+      try {
+        newVideoStream = await navigator.mediaDevices.getUserMedia({
+          audio: isFlip ? false : true,
+          video: { facingMode: front ? 'user' : 'environment' }
+        });
+      } catch (err2) {
+        console.warn('[NexTalk] facingMode fallback failed:', err2);
+        newVideoStream = await navigator.mediaDevices.getUserMedia({
+          audio: isFlip ? false : true,
+          video: true
+        });
+      }
     }
 
     const newVideoTrack = newVideoStream.getVideoTracks()[0];
+    const settings = newVideoTrack.getSettings ? newVideoTrack.getSettings() : {};
+    currentVideoDeviceId = settings.deviceId || null;
+    console.log('[NexTalk] active camera:', newVideoTrack.label || '(no label)',
+      'facing:', settings.facingMode || '?', 'id:', (currentVideoDeviceId || '').slice(0, 8));
 
     if (isFlip) {
-      // Stop ONLY the old video track. Keep the audio track running.
-      const oldVideoTrack = stream.getVideoTracks()[0];
-      if (oldVideoTrack) {
-        stream.removeTrack(oldVideoTrack);
-        try { oldVideoTrack.stop(); } catch {}
-      }
       stream.addTrack(newVideoTrack);
     } else {
-      // First-time setup: assign the new stream (audio + video).
       stream = newVideoStream;
     }
 
-    // Always refresh self-preview srcObject
+    // Refresh device list now that labels are available
+    if (!videoDevices.length || !videoDevices.some(d => d.label)) {
+      await refreshVideoDevices();
+    }
+
+    // Force re-bind of self-preview
     const localEl = document.getElementById('local');
+    localEl.srcObject = null;
     localEl.srcObject = stream;
     localEl.play().catch(() => {});
 
-    // If we're in an active call, replace the video sender's track
+    // Replace track on the peer connection
     if (pc) {
       const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
-      if (sender && newVideoTrack) {
+      if (sender) {
         try { await sender.replaceTrack(newVideoTrack); }
         catch (e) { console.warn('[NexTalk] replaceTrack failed:', e); }
       }
-      // Re-apply camera-on/off state (replaceTrack resets enabled to true)
-      newVideoTrack.enabled = camOn;
     }
 
-    // Re-apply mic state too
+    // Re-apply toggle state
     stream.getAudioTracks().forEach(t => t.enabled = micOn);
+    newVideoTrack.enabled = camOn;
 
     setStatus('idle', 'Ready');
   } catch (e) {
     console.error('[NexTalk] camera error:', e);
-    toast('Camera/mic denied — check permissions');
+    toast('Camera error: ' + (e.message || e.name || 'unknown'));
     setStatus('idle', 'No camera');
   }
 }
@@ -516,10 +598,33 @@ function hangup() {
 function send(m) { if (ws && ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify(m)); }
 
 // ─── CAMERA FLIP ─────────────────────────────────────────────
+let flipInProgress = false;
 async function flipCamera() {
-  usingFrontCam = !usingFrontCam;
-  toast(usingFrontCam ? 'Front camera' : 'Back camera');
-  await startCamera(usingFrontCam);
+  if (flipInProgress) return;
+  if (!stream) { toast('Camera not ready'); return; }
+  flipInProgress = true;
+  try {
+    // Make sure we know what cameras exist (labels need permission)
+    if (!videoDevices.length || !videoDevices.some(d => d.label)) {
+      await refreshVideoDevices();
+    }
+    if (videoDevices.length < 2) {
+      toast('Only one camera available');
+      flipInProgress = false;
+      return;
+    }
+    usingFrontCam = !usingFrontCam;
+    toast(usingFrontCam ? 'Switching to front...' : 'Switching to back...');
+    await startCamera(usingFrontCam);
+    toast(usingFrontCam ? 'Front camera' : 'Back camera');
+  } catch (e) {
+    console.error('[NexTalk] flip failed:', e);
+    toast('Flip failed: ' + (e.message || e.name));
+    // Revert flag if it actually failed
+    usingFrontCam = !usingFrontCam;
+  } finally {
+    flipInProgress = false;
+  }
 }
 
 // ─── CHAT ───────────────────────────────────────────────────
