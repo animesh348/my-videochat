@@ -8,6 +8,15 @@ from pathlib import Path
 import asyncio, base64, hashlib, hmac, json, logging, os, secrets, time
 import urllib.parse, urllib.request
 
+# Load .env (if present) BEFORE any os.getenv() call below.
+# python-dotenv is optional — code works fine without it, you just have to
+# set env vars manually in your shell.
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+except ImportError:
+    pass
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
