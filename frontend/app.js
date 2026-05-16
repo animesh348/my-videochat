@@ -516,43 +516,63 @@ function connect() {
 
 // ─── PEER INFO RENDERING ─────────────────────────────────────
 function renderPeerInfo() {
-  if (!peerInfo) return;
-  console.log('[NexTalk] peer matched:', peerInfo);
+  // Always show something on match, even if peer profile is missing entirely
+  const info = peerInfo || {};
+  console.log('[NexTalk] renderPeerInfo:', info);
 
-  // Country — always show, even if peer has no country info (show 🌍 Earth)
-  const code = (peerInfo.country_code || '').toUpperCase();
-  const flag = code ? codeToFlag(code) : '🌍';
-  const cName = peerInfo.country_name || 'Earth';
-  document.getElementById('peerFlag').textContent = flag;
-  document.getElementById('peerCountryName').textContent = cName;
-  document.getElementById('peerCountry').classList.add('visible');
+  // Country — ALWAYS visible during a call, defaults to Earth
+  const code = (info.country_code || '').toUpperCase();
+  const flag = code && code.length === 2 ? codeToFlag(code) : '🌍';
+  const cName = info.country_name || (code ? code : 'Earth');
 
-  // Rating (only show if they have at least 1 rating)
-  if (peerInfo.rating_count > 0) {
-    document.getElementById('peerRatingValue').textContent =
-      peerInfo.rating_avg.toFixed(1) + ` (${peerInfo.rating_count})`;
+  const peerCountryEl = document.getElementById('peerCountry');
+  const peerFlagEl = document.getElementById('peerFlag');
+  const peerNameEl = document.getElementById('peerCountryName');
+  if (peerFlagEl) peerFlagEl.textContent = flag;
+  if (peerNameEl) peerNameEl.textContent = cName;
+  if (peerCountryEl) {
+    peerCountryEl.classList.add('visible');
+    // Force inline style too as a safety net
+    peerCountryEl.style.opacity = '1';
+    peerCountryEl.style.display = 'flex';
+  }
+  console.log('[NexTalk] flag set to:', flag, cName);
+
+  // Rating
+  const rcount = info.rating_count || 0;
+  const ravg = info.rating_avg || 0;
+  if (rcount > 0) {
+    const v = document.getElementById('peerRatingValue');
+    if (v) v.textContent = ravg.toFixed(1) + ` (${rcount})`;
     document.getElementById('peerRating').classList.add('visible');
+    document.getElementById('peerRating').style.opacity = '1';
   } else {
     document.getElementById('peerRating').classList.remove('visible');
+    document.getElementById('peerRating').style.opacity = '0';
   }
 
   // Interests
   const box = document.getElementById('peerInterests');
-  box.innerHTML = '';
-  const mySet = new Set(myInterests.map(i => i.toLowerCase()));
-  (peerInfo.interests || []).slice(0, 5).forEach(tag => {
-    const el = document.createElement('span');
-    el.className = 'peer-interest';
-    if (mySet.has(tag.toLowerCase())) el.classList.add('shared');
-    el.textContent = tag;
-    box.appendChild(el);
-  });
+  if (box) {
+    box.innerHTML = '';
+    const mySet = new Set(myInterests.map(i => i.toLowerCase()));
+    (info.interests || []).slice(0, 5).forEach(tag => {
+      const el = document.createElement('span');
+      el.className = 'peer-interest';
+      if (mySet.has(tag.toLowerCase())) el.classList.add('shared');
+      el.textContent = tag;
+      box.appendChild(el);
+    });
+  }
 }
 
 function clearPeerInfo() {
-  document.getElementById('peerCountry').classList.remove('visible');
-  document.getElementById('peerRating').classList.remove('visible');
-  document.getElementById('peerInterests').innerHTML = '';
+  const c = document.getElementById('peerCountry');
+  const r = document.getElementById('peerRating');
+  if (c) { c.classList.remove('visible'); c.style.opacity = '0'; }
+  if (r) { r.classList.remove('visible'); r.style.opacity = '0'; }
+  const pi = document.getElementById('peerInterests');
+  if (pi) pi.innerHTML = '';
   peerInfo = null;
 }
 
