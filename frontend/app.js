@@ -43,20 +43,12 @@ let myInterests = [];
 let peerInfo = null;     // {client_id, country_code, country_name, interests, rating_avg, rating_count}
 let lastPeerClientId = null; // for rating prompt after disconnect
 
-// CAPTCHA / session
-let captchaRequired = false;
-let captchaToken = '';     // fresh Turnstile token (single-use)
-let sessionToken = '';     // server-issued HMAC ticket, persisted in localStorage
-let captchaWidgetId = null;
-
 // ─── BOOT ─────────────────────────────────────────────────────
 window.addEventListener('load', async () => {
   console.log('[NexTalk] booting...');
   initClientId();
   document.getElementById('setupScreen').classList.remove('hidden');
   renderInterestGrid();
-  initAgeGate();
-  initCaptcha();
   await startCamera(true);
   // After permission is granted, labels become available — refresh the list
   await refreshVideoDevices();
@@ -65,82 +57,6 @@ window.addEventListener('load', async () => {
   setInterval(pollOnlineCount, 15000);
   console.log('[NexTalk] boot complete');
 });
-
-async function initCaptcha() {
-  sessionToken = localStorage.getItem('nextalk_session') || '';
-
-  let cfg = {};
-  try {
-    const r = await fetch('/config', { cache: 'no-store' });
-    if (r.ok) cfg = await r.json();
-  } catch (e) {
-    console.warn('[NexTalk] /config fetch failed:', e);
-  }
-
-  captchaRequired = !!cfg.turnstile_required;
-  const section = document.getElementById('captchaSection');
-
-  // If CAPTCHA is off server-side, or we already have a session ticket, hide widget.
-  if (!captchaRequired || sessionToken) {
-    if (section) section.style.display = 'none';
-    updateStartButton();
-    return;
-  }
-
-  if (section) section.style.display = 'flex';
-
-  const renderWidget = () => {
-    if (!window.turnstile) { setTimeout(renderWidget, 150); return; }
-    try {
-      captchaWidgetId = window.turnstile.render('#captchaWidget', {
-        sitekey: cfg.turnstile_site_key,
-        theme:   'dark',
-        callback: (tok) => {
-          captchaToken = tok;
-          console.log('[NexTalk] captcha solved');
-          updateStartButton();
-        },
-        'error-callback':   () => { captchaToken = ''; updateStartButton(); },
-        'expired-callback': () => { captchaToken = ''; updateStartButton(); },
-      });
-    } catch (e) {
-      console.error('[NexTalk] turnstile render failed:', e);
-    }
-  };
-  renderWidget();
-}
-
-function refreshCaptcha() {
-  captchaToken = '';
-  if (window.turnstile && captchaWidgetId !== null) {
-    try { window.turnstile.reset(captchaWidgetId); } catch {}
-  }
-  updateStartButton();
-}
-
-function updateStartButton() {
-  const btn = document.getElementById('setupStart');
-  const cb  = document.getElementById('ageConfirm');
-  if (!btn) return;
-  const ageOk = !!(cb && cb.checked);
-  const captchaOk = !captchaRequired || !!sessionToken || !!captchaToken;
-  btn.disabled = !(ageOk && captchaOk);
-}
-
-function initAgeGate() {
-  const cb = document.getElementById('ageConfirm');
-  if (!cb) return;
-  if (localStorage.getItem('nextalk_age_ok') === '1') {
-    cb.checked = true;
-  }
-  const sync = () => {
-    if (cb.checked) localStorage.setItem('nextalk_age_ok', '1');
-    else            localStorage.removeItem('nextalk_age_ok');
-    updateStartButton();
-  };
-  cb.addEventListener('change', sync);
-  sync();
-}
 
 function initClientId() {
   clientId = localStorage.getItem('nextalk_cid');
@@ -265,13 +181,6 @@ function getCustomInterests() {
 }
 
 function finishSetup() {
-  const cb = document.getElementById('ageConfirm');
-  if (!cb || !cb.checked) {
-    toast('Please confirm you are 18 or older'); return;
-  }
-  if (captchaRequired && !sessionToken && !captchaToken) {
-    toast('Please complete the verification check'); return;
-  }
   const customs = getCustomInterests();
   const all = [...new Set([...myInterests, ...customs])].slice(0, 5);
   myInterests = all;
@@ -424,10 +333,6 @@ async function startCamera(front) {
     localEl.srcObject = stream;
     localEl.play().catch(() => {});
 
-    // Mirror only when the front camera is in use (natural for selfies, wrong for back cam)
-    const previewEl = document.querySelector('.self-preview');
-    if (previewEl) previewEl.classList.toggle('back-cam', !front);
-
     // Replace track on the peer connection
     if (pc) {
       const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
@@ -522,21 +427,7 @@ function connect() {
     let m; try { m = JSON.parse(data); } catch { return; }
 
     if (m.type === 'ready') {
-      // Server is ready — first prove we passed CAPTCHA, then send profile.
-      send({
-        type: 'captcha',
-        session_token:   sessionToken || '',
-        turnstile_token: captchaToken || '',
-      });
-    }
-
-    if (m.type === 'captcha_ok') {
-      if (m.session_token) {
-        sessionToken = m.session_token;
-        localStorage.setItem('nextalk_session', sessionToken);
-      }
-      // Turnstile tokens are single-use — drop it now that the server consumed it.
-      captchaToken = '';
+      // Server is ready; send our profile to enter matchmaking
       send({
         type: 'connect',
         client_id: clientId,
@@ -544,46 +435,6 @@ function connect() {
         country_code: myCountry.code,
         country_name: myCountry.name,
       });
-    }
-
-    if (m.type === 'captcha_failed') {
-      // Session ticket was invalid/expired, or Turnstile rejected. Force re-CAPTCHA.
-      sessionToken = '';
-      captchaToken = '';
-      localStorage.removeItem('nextalk_session');
-      active = false;
-      intentionalClose = true;
-      try { ws.close(); } catch {}
-      ws = null;
-      const section = document.getElementById('captchaSection');
-      if (section) section.style.display = 'flex';
-      refreshCaptcha();
-      document.getElementById('setupScreen').classList.remove('hidden');
-      document.getElementById('startBtn').style.display = 'flex';
-      document.getElementById('stopBtn').style.display  = 'none';
-      setStatus('idle', 'Verification needed');
-      toast('Please re-verify to continue');
-      return;
-    }
-
-    if (m.type === 'banned') {
-      active = false;
-      intentionalClose = true;
-      try { ws.close(); } catch {}
-      ws = null;
-      hangup();
-      stopTimer();
-      document.getElementById('startBtn').style.display = 'flex';
-      document.getElementById('stopBtn').style.display  = 'none';
-      document.getElementById('nextBtn').disabled = true;
-      let until = '';
-      if (m.expires_at) {
-        const d = new Date(m.expires_at * 1000);
-        until = ' until ' + d.toLocaleString();
-      }
-      showOverlay('Account temporarily blocked', (m.msg || 'Multiple reports') + until);
-      setStatus('idle', 'Blocked');
-      return;
     }
 
     if (m.type === 'waiting') {
@@ -989,12 +840,7 @@ function submitReport() {
   const reason = document.getElementById('reportReason').value;
   if (!reason) { toast('Select a reason first'); return; }
   fetch('/report',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({
-      room: roomId,
-      reason,
-      details: document.getElementById('reportDetails').value,
-      rater_client_id: clientId,
-    })
+    body:JSON.stringify({room:roomId,reason,details:document.getElementById('reportDetails').value})
   }).catch(()=>{});
   closeReport(); toast('Reported. Skipping...'); sysMsg('You reported this user.');
   setTimeout(nextMatch, 800);
