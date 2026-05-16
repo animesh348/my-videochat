@@ -165,7 +165,12 @@ async def submit_rating(payload: RatePayload):
     return JSONResponse({"status": "received", "avg": r["avg"], "count": r["count"]})
 
 
-# ── STATS ENDPOINT ───────────────────────────────────────────────
+# ── HEALTH / STATS ENDPOINTS ─────────────────────────────────────
+@app.get("/healthz")
+async def healthz():
+    """Liveness probe for platform health checks."""
+    return {"status": "ok"}
+
 @app.get("/stats")
 async def get_stats():
     return {
