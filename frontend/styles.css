@@ -509,6 +509,13 @@ video {
 }
 .age-check strong { color: var(--text); font-weight: 600; }
 
+/* Captcha widget container */
+.captcha-section { display: flex; flex-direction: column; align-items: stretch; }
+.captcha-section #captchaWidget {
+  display: flex; justify-content: center;
+  min-height: 65px;
+}
+
 /* ── Rating prompt (slides down from TOP — never overlaps controls) ─── */
 .rating-prompt {
   position: fixed;

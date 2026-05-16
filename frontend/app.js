@@ -43,6 +43,12 @@ let myInterests = [];
 let peerInfo = null;     // {client_id, country_code, country_name, interests, rating_avg, rating_count}
 let lastPeerClientId = null; // for rating prompt after disconnect
 
+// CAPTCHA / session
+let captchaRequired = false;
+let captchaToken = '';     // fresh Turnstile token (single-use)
+let sessionToken = '';     // server-issued HMAC ticket, persisted in localStorage
+let captchaWidgetId = null;
+
 // ─── BOOT ─────────────────────────────────────────────────────
 window.addEventListener('load', async () => {
   console.log('[NexTalk] booting...');
@@ -50,6 +56,7 @@ window.addEventListener('load', async () => {
   document.getElementById('setupScreen').classList.remove('hidden');
   renderInterestGrid();
   initAgeGate();
+  initCaptcha();
   await startCamera(true);
   // After permission is granted, labels become available — refresh the list
   await refreshVideoDevices();
@@ -59,17 +66,77 @@ window.addEventListener('load', async () => {
   console.log('[NexTalk] boot complete');
 });
 
+async function initCaptcha() {
+  sessionToken = localStorage.getItem('nextalk_session') || '';
+
+  let cfg = {};
+  try {
+    const r = await fetch('/config', { cache: 'no-store' });
+    if (r.ok) cfg = await r.json();
+  } catch (e) {
+    console.warn('[NexTalk] /config fetch failed:', e);
+  }
+
+  captchaRequired = !!cfg.turnstile_required;
+  const section = document.getElementById('captchaSection');
+
+  // If CAPTCHA is off server-side, or we already have a session ticket, hide widget.
+  if (!captchaRequired || sessionToken) {
+    if (section) section.style.display = 'none';
+    updateStartButton();
+    return;
+  }
+
+  if (section) section.style.display = 'flex';
+
+  const renderWidget = () => {
+    if (!window.turnstile) { setTimeout(renderWidget, 150); return; }
+    try {
+      captchaWidgetId = window.turnstile.render('#captchaWidget', {
+        sitekey: cfg.turnstile_site_key,
+        theme:   'dark',
+        callback: (tok) => {
+          captchaToken = tok;
+          console.log('[NexTalk] captcha solved');
+          updateStartButton();
+        },
+        'error-callback':   () => { captchaToken = ''; updateStartButton(); },
+        'expired-callback': () => { captchaToken = ''; updateStartButton(); },
+      });
+    } catch (e) {
+      console.error('[NexTalk] turnstile render failed:', e);
+    }
+  };
+  renderWidget();
+}
+
+function refreshCaptcha() {
+  captchaToken = '';
+  if (window.turnstile && captchaWidgetId !== null) {
+    try { window.turnstile.reset(captchaWidgetId); } catch {}
+  }
+  updateStartButton();
+}
+
+function updateStartButton() {
+  const btn = document.getElementById('setupStart');
+  const cb  = document.getElementById('ageConfirm');
+  if (!btn) return;
+  const ageOk = !!(cb && cb.checked);
+  const captchaOk = !captchaRequired || !!sessionToken || !!captchaToken;
+  btn.disabled = !(ageOk && captchaOk);
+}
+
 function initAgeGate() {
   const cb = document.getElementById('ageConfirm');
-  const btn = document.getElementById('setupStart');
-  if (!cb || !btn) return;
+  if (!cb) return;
   if (localStorage.getItem('nextalk_age_ok') === '1') {
     cb.checked = true;
   }
   const sync = () => {
-    btn.disabled = !cb.checked;
     if (cb.checked) localStorage.setItem('nextalk_age_ok', '1');
     else            localStorage.removeItem('nextalk_age_ok');
+    updateStartButton();
   };
   cb.addEventListener('change', sync);
   sync();
@@ -201,6 +268,9 @@ function finishSetup() {
   const cb = document.getElementById('ageConfirm');
   if (!cb || !cb.checked) {
     toast('Please confirm you are 18 or older'); return;
+  }
+  if (captchaRequired && !sessionToken && !captchaToken) {
+    toast('Please complete the verification check'); return;
   }
   const customs = getCustomInterests();
   const all = [...new Set([...myInterests, ...customs])].slice(0, 5);
@@ -452,7 +522,21 @@ function connect() {
     let m; try { m = JSON.parse(data); } catch { return; }
 
     if (m.type === 'ready') {
-      // Server is ready; send our profile to enter matchmaking
+      // Server is ready — first prove we passed CAPTCHA, then send profile.
+      send({
+        type: 'captcha',
+        session_token:   sessionToken || '',
+        turnstile_token: captchaToken || '',
+      });
+    }
+
+    if (m.type === 'captcha_ok') {
+      if (m.session_token) {
+        sessionToken = m.session_token;
+        localStorage.setItem('nextalk_session', sessionToken);
+      }
+      // Turnstile tokens are single-use — drop it now that the server consumed it.
+      captchaToken = '';
       send({
         type: 'connect',
         client_id: clientId,
@@ -460,6 +544,26 @@ function connect() {
         country_code: myCountry.code,
         country_name: myCountry.name,
       });
+    }
+
+    if (m.type === 'captcha_failed') {
+      // Session ticket was invalid/expired, or Turnstile rejected. Force re-CAPTCHA.
+      sessionToken = '';
+      captchaToken = '';
+      localStorage.removeItem('nextalk_session');
+      active = false;
+      intentionalClose = true;
+      try { ws.close(); } catch {}
+      ws = null;
+      const section = document.getElementById('captchaSection');
+      if (section) section.style.display = 'flex';
+      refreshCaptcha();
+      document.getElementById('setupScreen').classList.remove('hidden');
+      document.getElementById('startBtn').style.display = 'flex';
+      document.getElementById('stopBtn').style.display  = 'none';
+      setStatus('idle', 'Verification needed');
+      toast('Please re-verify to continue');
+      return;
     }
 
     if (m.type === 'banned') {

@@ -5,7 +5,8 @@ from pydantic import BaseModel, constr
 from datetime import datetime, timezone
 from collections import defaultdict, deque
 from pathlib import Path
-import json, logging, time, secrets
+import asyncio, base64, hashlib, hmac, json, logging, os, secrets, time
+import urllib.parse, urllib.request
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -30,8 +31,24 @@ REPORT_WINDOW_SEC    = 24 * 60 * 60  # 24h sliding window
 BAN_DURATION_SEC     = 24 * 60 * 60  # 24h ban
 BANS_FILE            = Path("bans.jsonl")
 
+# Cloudflare Turnstile (CAPTCHA). Defaults are Cloudflare's always-pass test keys —
+# fine for dev, NOT for production. In prod, set both env vars from your dashboard:
+#   TURNSTILE_SITE_KEY  — public site key (visible in frontend)
+#   TURNSTILE_SECRET    — server-side secret
+# To disable CAPTCHA entirely (e.g. behind a private network), set TURNSTILE_REQUIRED=0.
+TURNSTILE_SITE_KEY = os.getenv("TURNSTILE_SITE_KEY", "1x00000000000000000000AA")
+TURNSTILE_SECRET   = os.getenv("TURNSTILE_SECRET",   "1x0000000000000000000000000000000AA")
+TURNSTILE_REQUIRED = os.getenv("TURNSTILE_REQUIRED", "1") not in ("0", "false", "False", "")
+TURNSTILE_VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
+
+# HMAC-signed session ticket so verified clients don't need to re-CAPTCHA every
+# reconnect. SESSION_SECRET defaults to a fresh per-process value (existing
+# tickets become invalid on restart). Set it via env to persist across restarts.
+SESSION_SECRET   = os.getenv("SESSION_SECRET") or secrets.token_hex(32)
+SESSION_TTL_SEC  = 4 * 60 * 60
+
 # Message types we accept at all
-ALLOWED_TYPES = {"connect", "requeue", "offer", "answer", "ice", "chat"}
+ALLOWED_TYPES = {"connect", "requeue", "offer", "answer", "ice", "chat", "captcha"}
 
 # ── STATE ────────────────────────────────────────────────────────
 # Each entry: {"ws": WebSocket, "profile": {...}, "queued_at": float}
@@ -63,6 +80,9 @@ report_counts: dict[str, deque] = defaultdict(deque)
 
 # Active bans: cid -> expires_at (unix)
 banned_cids: dict[str, float] = {}
+
+# WS connections that have passed CAPTCHA this session
+verified_ws: set[WebSocket] = set()
 
 
 # ── REPORT ENDPOINT ─────────────────────────────────────────────
@@ -144,6 +164,71 @@ async def get_stats():
         "waiting": len(waiting_pool),
         "in_chat": len(rooms) * 2,
     }
+
+
+# ── CONFIG ENDPOINT (public, used by frontend to render CAPTCHA) ──
+@app.get("/config")
+async def get_config():
+    return {
+        "turnstile_site_key": TURNSTILE_SITE_KEY,
+        "turnstile_required": TURNSTILE_REQUIRED,
+    }
+
+
+# ── CAPTCHA / SESSION TICKETS ────────────────────────────────────
+def make_session_token() -> str:
+    """Issue an HMAC-signed ticket that proves this browser passed CAPTCHA."""
+    exp = int(time.time()) + SESSION_TTL_SEC
+    nonce = secrets.token_hex(8)
+    payload = f"{nonce}.{exp}"
+    sig = hmac.new(SESSION_SECRET.encode(), payload.encode(), hashlib.sha256).digest()
+    sig_b64 = base64.urlsafe_b64encode(sig).rstrip(b"=").decode()
+    return f"{payload}.{sig_b64}"
+
+
+def verify_session_token(token: str) -> bool:
+    if not token or len(token) > 200:
+        return False
+    try:
+        parts = token.split(".")
+        if len(parts) != 3:
+            return False
+        nonce, exp_str, sig_b64 = parts
+        if int(exp_str) < time.time():
+            return False
+        payload = f"{nonce}.{exp_str}"
+        expected = hmac.new(SESSION_SECRET.encode(), payload.encode(), hashlib.sha256).digest()
+        expected_b64 = base64.urlsafe_b64encode(expected).rstrip(b"=").decode()
+        return hmac.compare_digest(sig_b64, expected_b64)
+    except Exception:
+        return False
+
+
+async def verify_turnstile(token: str, ip: str) -> bool:
+    """Verify a Turnstile token via Cloudflare's siteverify API.
+
+    Done in a thread because we don't want a third-party HTTP dep just for this.
+    """
+    if not TURNSTILE_REQUIRED:
+        return True
+    if not token or len(token) > 2048:
+        return False
+
+    def _verify() -> bool:
+        try:
+            body = urllib.parse.urlencode({
+                "secret":   TURNSTILE_SECRET,
+                "response": token,
+                "remoteip": ip,
+            }).encode()
+            req = urllib.request.Request(TURNSTILE_VERIFY_URL, data=body)
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                return bool(json.loads(resp.read()).get("success", False))
+        except Exception as e:
+            logger.error(f"Turnstile verify error: {e}")
+            return False
+
+    return await asyncio.get_event_loop().run_in_executor(None, _verify)
 
 
 # ── MATCHING HELPERS ─────────────────────────────────────────────
@@ -368,6 +453,10 @@ async def websocket_endpoint(ws: WebSocket):
     }
     ws_msg_times[ws] = deque()
 
+    # If CAPTCHA is disabled (private network, dev override), auto-verify.
+    if not TURNSTILE_REQUIRED:
+        verified_ws.add(ws)
+
     await ws.send_json({"type": "ready"})
 
     try:
@@ -391,6 +480,36 @@ async def websocket_endpoint(ws: WebSocket):
 
             mtype = msg.get("type")
             if mtype not in ALLOWED_TYPES:
+                continue
+
+            # ── CAPTCHA gate ──
+            if mtype == "captcha":
+                if ws in verified_ws:
+                    await ws.send_json({"type": "captcha_ok"})
+                    continue
+
+                session_token   = str(msg.get("session_token", ""))[:200]
+                turnstile_token = str(msg.get("turnstile_token", ""))[:2048]
+
+                if session_token and verify_session_token(session_token):
+                    verified_ws.add(ws)
+                    await ws.send_json({"type": "captcha_ok"})
+                    continue
+
+                if await verify_turnstile(turnstile_token, ip):
+                    verified_ws.add(ws)
+                    await ws.send_json({
+                        "type": "captcha_ok",
+                        "session_token": make_session_token(),
+                    })
+                    continue
+
+                await ws.send_json({"type": "captcha_failed"})
+                continue
+
+            # Every other type requires verification first.
+            if ws not in verified_ws:
+                await ws.send_json({"type": "captcha_failed"})
                 continue
 
             # ── Profile sent: now match ──
@@ -467,6 +586,7 @@ async def websocket_endpoint(ws: WebSocket):
                 pass
         ws_profile.pop(ws, None)
         ws_msg_times.pop(ws, None)
+        verified_ws.discard(ws)
         ip_release(ip)
 
 

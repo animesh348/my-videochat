@@ -147,3 +147,32 @@ def test_ip_release_decrements_and_cleans_up():
     main.ip_active["1.2.3.4"] = 1
     main.ip_release("1.2.3.4")
     assert "1.2.3.4" not in main.ip_active
+
+
+# ── Session tokens (CAPTCHA tickets) ───────────────────────────
+def test_session_token_roundtrip():
+    tok = main.make_session_token()
+    assert main.verify_session_token(tok) is True
+
+
+def test_session_token_rejects_tampered_signature():
+    tok = main.make_session_token()
+    # Flip last char of signature
+    bad = tok[:-1] + ("A" if tok[-1] != "A" else "B")
+    assert main.verify_session_token(bad) is False
+
+
+def test_session_token_rejects_expired(monkeypatch):
+    # Issue a token, then jump time forward past TTL.
+    tok = main.make_session_token()
+    real_time = main.time.time
+    monkeypatch.setattr(main.time, "time",
+                        lambda: real_time() + main.SESSION_TTL_SEC + 10)
+    assert main.verify_session_token(tok) is False
+
+
+def test_session_token_rejects_garbage():
+    assert main.verify_session_token("") is False
+    assert main.verify_session_token("not.a.token") is False
+    assert main.verify_session_token("only-two.parts") is False
+    assert main.verify_session_token("a" * 500) is False
