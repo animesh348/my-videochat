@@ -49,6 +49,7 @@ window.addEventListener('load', async () => {
   initClientId();
   document.getElementById('setupScreen').classList.remove('hidden');
   renderInterestGrid();
+  initAgeGate();
   await startCamera(true);
   // After permission is granted, labels become available — refresh the list
   await refreshVideoDevices();
@@ -57,6 +58,22 @@ window.addEventListener('load', async () => {
   setInterval(pollOnlineCount, 15000);
   console.log('[NexTalk] boot complete');
 });
+
+function initAgeGate() {
+  const cb = document.getElementById('ageConfirm');
+  const btn = document.getElementById('setupStart');
+  if (!cb || !btn) return;
+  if (localStorage.getItem('nextalk_age_ok') === '1') {
+    cb.checked = true;
+  }
+  const sync = () => {
+    btn.disabled = !cb.checked;
+    if (cb.checked) localStorage.setItem('nextalk_age_ok', '1');
+    else            localStorage.removeItem('nextalk_age_ok');
+  };
+  cb.addEventListener('change', sync);
+  sync();
+}
 
 function initClientId() {
   clientId = localStorage.getItem('nextalk_cid');
@@ -181,6 +198,10 @@ function getCustomInterests() {
 }
 
 function finishSetup() {
+  const cb = document.getElementById('ageConfirm');
+  if (!cb || !cb.checked) {
+    toast('Please confirm you are 18 or older'); return;
+  }
   const customs = getCustomInterests();
   const all = [...new Set([...myInterests, ...customs])].slice(0, 5);
   myInterests = all;
@@ -333,6 +354,10 @@ async function startCamera(front) {
     localEl.srcObject = stream;
     localEl.play().catch(() => {});
 
+    // Mirror only when the front camera is in use (natural for selfies, wrong for back cam)
+    const previewEl = document.querySelector('.self-preview');
+    if (previewEl) previewEl.classList.toggle('back-cam', !front);
+
     // Replace track on the peer connection
     if (pc) {
       const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
@@ -435,6 +460,26 @@ function connect() {
         country_code: myCountry.code,
         country_name: myCountry.name,
       });
+    }
+
+    if (m.type === 'banned') {
+      active = false;
+      intentionalClose = true;
+      try { ws.close(); } catch {}
+      ws = null;
+      hangup();
+      stopTimer();
+      document.getElementById('startBtn').style.display = 'flex';
+      document.getElementById('stopBtn').style.display  = 'none';
+      document.getElementById('nextBtn').disabled = true;
+      let until = '';
+      if (m.expires_at) {
+        const d = new Date(m.expires_at * 1000);
+        until = ' until ' + d.toLocaleString();
+      }
+      showOverlay('Account temporarily blocked', (m.msg || 'Multiple reports') + until);
+      setStatus('idle', 'Blocked');
+      return;
     }
 
     if (m.type === 'waiting') {
@@ -840,7 +885,12 @@ function submitReport() {
   const reason = document.getElementById('reportReason').value;
   if (!reason) { toast('Select a reason first'); return; }
   fetch('/report',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({room:roomId,reason,details:document.getElementById('reportDetails').value})
+    body:JSON.stringify({
+      room: roomId,
+      reason,
+      details: document.getElementById('reportDetails').value,
+      rater_client_id: clientId,
+    })
   }).catch(()=>{});
   closeReport(); toast('Reported. Skipping...'); sysMsg('You reported this user.');
   setTimeout(nextMatch, 800);
