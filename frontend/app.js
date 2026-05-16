@@ -67,17 +67,73 @@ function initClientId() {
 }
 
 async function detectCountry() {
+  // Try ipapi.co first
   try {
     const r = await fetch('https://ipapi.co/json/', { cache: 'no-store' });
-    if (!r.ok) throw new Error('geoip failed');
-    const j = await r.json();
-    myCountry.code = (j.country_code || '').toUpperCase();
-    myCountry.name = j.country_name || 'Unknown';
-    myCountry.flag = codeToFlag(myCountry.code);
+    if (r.ok) {
+      const j = await r.json();
+      if (j.country_code) {
+        myCountry.code = j.country_code.toUpperCase();
+        myCountry.name = j.country_name || 'Unknown';
+        myCountry.flag = codeToFlag(myCountry.code);
+        console.log('[NexTalk] country (ipapi):', myCountry);
+        updateSetupCountryUI();
+        return;
+      }
+    }
   } catch (e) {
-    console.warn('[NexTalk] country detect failed:', e);
-    myCountry = { code: '', name: 'Unknown', flag: '🌍' };
+    console.warn('[NexTalk] ipapi.co failed:', e);
   }
+
+  // Fallback to ipwho.is
+  try {
+    const r = await fetch('https://ipwho.is/', { cache: 'no-store' });
+    if (r.ok) {
+      const j = await r.json();
+      if (j.success && j.country_code) {
+        myCountry.code = j.country_code.toUpperCase();
+        myCountry.name = j.country || 'Unknown';
+        myCountry.flag = codeToFlag(myCountry.code);
+        console.log('[NexTalk] country (ipwho):', myCountry);
+        updateSetupCountryUI();
+        return;
+      }
+    }
+  } catch (e) {
+    console.warn('[NexTalk] ipwho.is failed:', e);
+  }
+
+  // Last resort: try timezone-based detection
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+    const tzMap = {
+      'Asia/Kolkata': ['IN', 'India'], 'Asia/Calcutta': ['IN', 'India'],
+      'Asia/Tokyo': ['JP', 'Japan'], 'Asia/Shanghai': ['CN', 'China'],
+      'America/New_York': ['US', 'United States'], 'America/Los_Angeles': ['US', 'United States'],
+      'America/Chicago': ['US', 'United States'], 'America/Denver': ['US', 'United States'],
+      'Europe/London': ['GB', 'United Kingdom'], 'Europe/Paris': ['FR', 'France'],
+      'Europe/Berlin': ['DE', 'Germany'], 'Europe/Madrid': ['ES', 'Spain'],
+      'Australia/Sydney': ['AU', 'Australia'], 'America/Toronto': ['CA', 'Canada'],
+      'America/Sao_Paulo': ['BR', 'Brazil'], 'Asia/Dubai': ['AE', 'UAE'],
+      'Asia/Singapore': ['SG', 'Singapore'], 'Asia/Seoul': ['KR', 'South Korea'],
+    };
+    if (tzMap[tz]) {
+      myCountry.code = tzMap[tz][0];
+      myCountry.name = tzMap[tz][1];
+      myCountry.flag = codeToFlag(myCountry.code);
+      console.log('[NexTalk] country (timezone):', myCountry);
+      updateSetupCountryUI();
+      return;
+    }
+  } catch {}
+
+  // Give up gracefully
+  myCountry = { code: '', name: 'Earth', flag: '🌍' };
+  console.warn('[NexTalk] country detection failed entirely');
+  updateSetupCountryUI();
+}
+
+function updateSetupCountryUI() {
   const flagEl = document.getElementById('setupFlag');
   const nameEl = document.getElementById('setupCountry');
   if (flagEl) flagEl.textContent = myCountry.flag;
@@ -461,9 +517,12 @@ function connect() {
 // ─── PEER INFO RENDERING ─────────────────────────────────────
 function renderPeerInfo() {
   if (!peerInfo) return;
-  // Country
-  const flag = codeToFlag(peerInfo.country_code || '');
-  const cName = peerInfo.country_name || 'Unknown';
+  console.log('[NexTalk] peer matched:', peerInfo);
+
+  // Country — always show, even if peer has no country info (show 🌍 Earth)
+  const code = (peerInfo.country_code || '').toUpperCase();
+  const flag = code ? codeToFlag(code) : '🌍';
+  const cName = peerInfo.country_name || 'Earth';
   document.getElementById('peerFlag').textContent = flag;
   document.getElementById('peerCountryName').textContent = cName;
   document.getElementById('peerCountry').classList.add('visible');
@@ -500,17 +559,27 @@ function clearPeerInfo() {
 // ─── RATING ──────────────────────────────────────────────────
 let pendingRateTarget = null;
 function maybeShowRating(targetId) {
-  if (!targetId) return;
-  // Only show if we actually had a real chat (timer ran)
+  console.log('[NexTalk] maybeShowRating called with:', targetId);
+  if (!targetId) {
+    console.log('[NexTalk] no targetId — rating skipped');
+    return;
+  }
+  // Don't show if the chat lasted less than 3 seconds (probably just opened+closed)
+  if (timerStart && (Date.now() - timerStart) < 3000) {
+    console.log('[NexTalk] chat too short — rating skipped');
+    return;
+  }
   pendingRateTarget = targetId;
   const el = document.getElementById('ratingPrompt');
   el.classList.add('show');
-  // Auto-hide after 5s
+  console.log('[NexTalk] rating prompt shown for', targetId);
+  // Auto-hide after 8s
   clearTimeout(window.__rateHideT);
-  window.__rateHideT = setTimeout(() => el.classList.remove('show'), 5000);
+  window.__rateHideT = setTimeout(() => el.classList.remove('show'), 8000);
 }
 
 function ratePeer(score) {
+  console.log('[NexTalk] ratePeer:', score, 'target:', pendingRateTarget);
   if (!pendingRateTarget) { hideRating(); return; }
   fetch('/rate', {
     method: 'POST',
@@ -520,7 +589,9 @@ function ratePeer(score) {
       rater_client_id: clientId,
       score: score,
     })
-  }).catch(() => {});
+  }).then(r => r.json()).then(j => {
+    console.log('[NexTalk] rate response:', j);
+  }).catch(e => console.warn('[NexTalk] rate failed:', e));
   toast(score === 1 ? 'Thanks for your feedback! 👍' : 'Got it, thanks 👎');
   hideRating();
 }

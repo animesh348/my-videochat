@@ -6,6 +6,7 @@
 <title>NexTalk — Meet someone new</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="icon" type="image/svg+xml" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><rect width="48" height="48" rx="11" fill="%23f97316"/><path d="M 10 36 L 10 12 L 38 36 L 38 12" stroke="white" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="38" cy="12" r="4.5" fill="%23fbbf24"/></svg>'>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Syne:wght@500;600;700;800&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -78,14 +79,23 @@ body {
   flex-wrap: nowrap;
   min-width: 0;
 }
-.brand { display:flex; align-items:center; gap:10px; flex-shrink: 0; }
-.brand .dot {
-  width: 9px; height: 9px; background: var(--accent); border-radius: 50%;
-  box-shadow: 0 0 12px var(--accent);
+.brand { display:flex; align-items:center; gap:12px; flex-shrink: 0; }
+.brand-mark {
+  width: 42px; height: 42px;
+  background: var(--accent);
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 6px 16px rgba(249,115,22,0.35);
 }
+.brand-mark svg { width: 26px; height: 26px; display: block; }
+.brand-text { display: flex; flex-direction: column; line-height: 1.1; }
 .brand h1 {
   margin: 0; font-family: 'Syne', sans-serif; font-weight: 700;
-  font-size: 19px; letter-spacing: 0.5px;
+  font-size: 24px; letter-spacing: 0.3px;
+}
+.brand .tagline {
+  font-size: 11px; color: var(--text-3);
+  letter-spacing: 0.5px; margin-top: 2px;
 }
 .top-pills { display:flex; gap:8px; align-items:center; }
 .pill {
@@ -160,14 +170,14 @@ video {
 .country-tag {
   position: absolute; top: 16px; left: 16px; z-index: 4;
   background: rgba(255,255,255,0.95); color: #1a1614;
-  padding: 7px 14px; border-radius: 999px;
-  display: flex; align-items: center; gap: 7px;
-  font-weight: 600; font-size: 13px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  padding: 8px 16px; border-radius: 999px;
+  display: flex; align-items: center; gap: 8px;
+  font-weight: 600; font-size: 14px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.35);
   opacity: 0; transition: opacity .3s;
 }
 .country-tag.visible { opacity: 1; }
-.country-tag .flag { font-size: 18px; line-height: 1; }
+.country-tag .flag { font-size: 20px; line-height: 1; }
 
 /* Rating badge — on remote video */
 .rating-tag {
@@ -493,26 +503,25 @@ video {
 .setup-start:hover { transform: translateY(-1px); }
 .setup-start:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
-/* ── Rating modal (slides in from bottom) ───────────────────── */
+/* ── Rating prompt (slides in from bottom) ───────────────────── */
 .rating-prompt {
   position: fixed;
-  bottom: 24px; left: 50%; transform: translateX(-50%) translateY(140%);
+  bottom: 90px; left: 50%; transform: translateX(-50%) translateY(180%);
   z-index: 200;
-  background: var(--surface);
-  backdrop-filter: blur(30px);
+  background: var(--bg-2);
   border: 0.5px solid var(--border);
   border-radius: 18px;
-  padding: 16px 20px;
-  display: flex; align-items: center; gap: 14px;
-  box-shadow: var(--shadow);
+  padding: 14px 18px;
+  display: flex; align-items: center; gap: 12px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.5);
   transition: transform .35s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 .rating-prompt.show { transform: translateX(-50%) translateY(0); }
 .rating-prompt .label { font-size: 13px; color: var(--text); font-weight: 500; }
 .rate-btn {
-  width: 38px; height: 38px; border-radius: 50%;
+  width: 40px; height: 40px; border-radius: 50%;
   background: var(--surface-2); border: 0.5px solid var(--border);
-  cursor: pointer; font-size: 16px;
+  cursor: pointer; font-size: 18px;
   display: flex; align-items: center; justify-content: center;
   transition: all .15s ease;
 }
@@ -595,7 +604,11 @@ video {
   .main { grid-template-columns: 1fr; padding: 0 14px 14px; }
   .side-panel { display: none; }
   .topbar { padding: 12px 14px; gap: 8px; }
+  .brand { gap: 8px; }
+  .brand-mark { width: 32px; height: 32px; border-radius: 9px; }
+  .brand-mark svg { width: 20px; height: 20px; }
   .brand h1 { font-size: 17px; }
+  .brand .tagline { display: none; }
   .top-pills { gap: 4px; flex-shrink: 1; min-width: 0; }
   .pill { padding: 4px 8px; font-size: 10px; }
   .pill .live-dot { width: 5px; height: 5px; }
@@ -695,8 +708,17 @@ video {
   <!-- Top bar -->
   <div class="topbar">
     <div class="brand">
-      <div class="dot"></div>
-      <h1>NexTalk</h1>
+      <div class="brand-mark">
+        <svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" aria-label="NexTalk logo">
+          <path d="M 10 36 L 10 12 L 38 36 L 38 12"
+                stroke="white" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+          <circle cx="38" cy="12" r="4.5" fill="#fbbf24" />
+        </svg>
+      </div>
+      <div class="brand-text">
+        <h1>NexTalk</h1>
+        <span class="tagline">Meet someone new</span>
+      </div>
     </div>
     <div class="top-pills">
       <div class="pill" id="statusPill">
