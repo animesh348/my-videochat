@@ -701,3 +701,16 @@ video {
     transform-origin: left top;
   }
 }
+
+/* ── Desktop setup card fixes ─────────────────────────────── */
+@media (min-width: 821px) {
+  .setup-screen {
+    align-items: flex-start;
+    padding: 40px 22px;
+    overflow-y: auto;
+  }
+  .setup-card {
+    margin: auto;
+    max-height: none;
+  }
+}
