@@ -675,3 +675,29 @@ video {
 @media (min-width: 821px) {
   .drawer, .backdrop, .drawer-btn { display: none !important; }
 }
+
+/* ── Mobile setup card fixes ─────────────────────────────── */
+@media (max-width: 820px) {
+  .setup-screen {
+    align-items: flex-start;
+    padding: 16px 12px;
+    overflow-y: auto;
+  }
+  .setup-card {
+    padding: 20px 18px;
+    margin: 8px 0 80px;
+    max-height: none;
+  }
+  .setup-card h2 { font-size: 20px; }
+  .setup-card .subtitle { font-size: 12px; margin-bottom: 16px; }
+  .setup-section { margin-bottom: 14px; }
+  .interest-grid { gap: 5px; }
+  .interest-chip { font-size: 11px; padding: 5px 10px; }
+  .setup-start { padding: 12px; font-size: 13px; }
+  
+  /* CAPTCHA mobile fix */
+  .cf-turnstile, .turnstile-container {
+    transform: scale(0.9);
+    transform-origin: left top;
+  }
+}
