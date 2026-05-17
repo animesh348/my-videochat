@@ -324,7 +324,7 @@
   window.addEventListener('resize', () => { canvas.width = canvas.height = 0; resize(); });
 
   const COLORS = ['#f97316', '#fbbf24', '#ec4899', '#34d399'];
-  const MAX_NODES = 16;
+  const MAX_NODES = 100;
   const nodes = [];
 
   function spawnNode() {
@@ -342,12 +342,12 @@
   }
 
   // Seed with some nodes so it's not empty at start
-  for (let i = 0; i < 8; i++) spawnNode();
+  for (let i = 0; i < 60; i++) spawnNode();
 
   // Continuously spawn new ones
   setInterval(() => {
-    if (nodes.length < MAX_NODES) spawnNode();
-  }, 1200);
+  if (nodes.length < MAX_NODES) spawnNode();
+  }, 200);
 
   let lastT = performance.now();
   function frame(now) {
@@ -374,7 +374,7 @@
     }
 
     // Draw connection lines between nearby nodes
-    const MAX_DIST = 280;
+    const MAX_DIST = 180;
     for (let i = 0; i < nodes.length; i++) {
       for (let j = i + 1; j < nodes.length; j++) {
         const a = nodes[i], b = nodes[j];
