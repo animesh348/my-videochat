@@ -18,10 +18,10 @@
 
   <!-- Background decor: orbs + connected dots (visible behind setup card) -->
   <div class="bg-decor" aria-hidden="true">
-    <div class="bg-orb bg-orb-1"></div>
-    <div class="bg-orb bg-orb-2"></div>
-    <div class="bg-orb bg-orb-3"></div>
-    <svg class="bg-network" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+  <div class="bg-orb bg-orb-1"></div>
+  <div class="bg-orb bg-orb-2"></div>
+  <div class="bg-orb bg-orb-3"></div>
+  <canvas class="bg-network-canvas" id="bgNetworkCanvas"></canvas>
       <g class="bg-lines">
         <line x1="120" y1="140" x2="380" y2="280"/>
         <line x1="380" y1="280" x2="680" y2="180"/>
@@ -307,5 +307,108 @@
 <div class="toast" id="toast"></div>
 
 <script src="/app.js"></script>
+<script>
+(function initLiveNetwork() {
+  const canvas = document.getElementById('bgNetworkCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+
+  let W = 0, H = 0;
+  function resize() {
+    const rect = canvas.getBoundingClientRect();
+    W = canvas.width  = rect.width  * window.devicePixelRatio;
+    H = canvas.height = rect.height * window.devicePixelRatio;
+    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+  }
+  resize();
+  window.addEventListener('resize', () => { canvas.width = canvas.height = 0; resize(); });
+
+  const COLORS = ['#f97316', '#fbbf24', '#ec4899', '#34d399'];
+  const MAX_NODES = 16;
+  const nodes = [];
+
+  function spawnNode() {
+    const rect = canvas.getBoundingClientRect();
+    nodes.push({
+      x: Math.random() * rect.width,
+      y: Math.random() * rect.height,
+      color: COLORS[Math.floor(Math.random() * COLORS.length)],
+      radius: 2 + Math.random() * 2,
+      life: 0,
+      maxLife: 6000 + Math.random() * 4000,  // 6-10 seconds total
+      vx: (Math.random() - 0.5) * 0.15,       // tiny drift
+      vy: (Math.random() - 0.5) * 0.15,
+    });
+  }
+
+  // Seed with some nodes so it's not empty at start
+  for (let i = 0; i < 8; i++) spawnNode();
+
+  // Continuously spawn new ones
+  setInterval(() => {
+    if (nodes.length < MAX_NODES) spawnNode();
+  }, 1200);
+
+  let lastT = performance.now();
+  function frame(now) {
+    const dt = now - lastT;
+    lastT = now;
+    const rect = canvas.getBoundingClientRect();
+    ctx.clearRect(0, 0, rect.width, rect.height);
+
+    // Update & remove old nodes
+    for (let i = nodes.length - 1; i >= 0; i--) {
+      const n = nodes[i];
+      n.life += dt;
+      n.x += n.vx;
+      n.y += n.vy;
+      if (n.life > n.maxLife) nodes.splice(i, 1);
+    }
+
+    // Calculate alpha for each node based on its lifecycle (fade in/hold/fade out)
+    for (const n of nodes) {
+      const t = n.life / n.maxLife;
+      if (t < 0.2)       n.alpha = t / 0.2;
+      else if (t > 0.8)  n.alpha = (1 - t) / 0.2;
+      else               n.alpha = 1;
+    }
+
+    // Draw connection lines between nearby nodes
+    const MAX_DIST = 280;
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const a = nodes[i], b = nodes[j];
+        const dx = a.x - b.x, dy = a.y - b.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist < MAX_DIST) {
+          const lineAlpha = (1 - dist / MAX_DIST) * Math.min(a.alpha, b.alpha) * 0.35;
+          ctx.strokeStyle = `rgba(249, 115, 22, ${lineAlpha})`;
+          ctx.lineWidth = 0.8;
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+          ctx.stroke();
+        }
+      }
+    }
+
+    // Draw nodes with glow
+    for (const n of nodes) {
+      ctx.shadowColor = n.color;
+      ctx.shadowBlur = 12;
+      ctx.fillStyle = n.color;
+      ctx.globalAlpha = n.alpha;
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, n.radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0;
+
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
 </body>
 </html>

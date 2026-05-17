@@ -54,22 +54,10 @@ body {
   opacity: 0.3;
   animation: orbFloat3 14s ease-in-out infinite;
 }
-.bg-network {
-  position: absolute; inset: 0; width: 100%; height: 100%;
-  opacity: 1;
-}
-
-/* Glowing connection lines with subtle flow */
-.bg-lines line {
-  stroke: rgba(249,115,22,0.55);
-  stroke-width: 1.2;
-  stroke-dasharray: 6 8;
-  animation: lineFlow 12s linear infinite;
-}
-.bg-lines line:nth-child(3n)   { stroke: rgba(236,72,153,0.5); animation-duration: 15s; }
-.bg-lines line:nth-child(3n+1) { stroke: rgba(251,191,36,0.45); animation-duration: 18s; animation-direction: reverse; }
-@keyframes lineFlow {
-  to { stroke-dashoffset: -200; }
+.bg-network-canvas {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  display: block;
 }
 
 /* Multi-color stars — slower, more staggered, never synchronized */
