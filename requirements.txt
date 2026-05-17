@@ -2,3 +2,5 @@ fastapi
 uvicorn
 websockets
 python-multipart
+python-dotenv
+pytest
