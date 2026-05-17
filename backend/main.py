@@ -34,6 +34,10 @@ class ReportPayload(BaseModel):
     reason: str
     details: str = ""
 
+@app.get("/healthz")
+async def healthz():
+    return {"status": "ok"}
+
 @app.post("/report")
 async def submit_report(payload: ReportPayload):
     entry = {
