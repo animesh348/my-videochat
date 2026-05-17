@@ -406,12 +406,14 @@ video {
 }
 
 /* ── Setup screen (before Start) ────────────────────────────── */
+/* ── Setup screen (before Start) ────────────────────────────── */
 .setup-screen {
-  position: fixed; inset: 0; z-index: 100;
+  position: fixed; inset: 0; z-index: 1000;
   background: var(--bg);
-  display: flex; align-items: center; justify-content: center;
-  padding: 22px;
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 40px 22px;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .setup-screen.hidden { display: none; }
 .setup-card {
@@ -699,18 +701,5 @@ video {
   .cf-turnstile, .turnstile-container {
     transform: scale(0.9);
     transform-origin: left top;
-  }
-}
-
-/* ── Desktop setup card fixes ─────────────────────────────── */
-@media (min-width: 821px) {
-  .setup-screen {
-    align-items: flex-start;
-    padding: 40px 22px;
-    overflow-y: auto;
-  }
-  .setup-card {
-    margin: auto;
-    max-height: none;
   }
 }
