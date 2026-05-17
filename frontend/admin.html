@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>NexTalk Admin</title>
+<link rel="icon" type="image/svg+xml" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><rect width="48" height="48" rx="11" fill="%23f97316"/><path d="M 10 36 L 10 12 L 38 36 L 38 12" stroke="white" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="38" cy="12" r="4.5" fill="%23fbbf24"/></svg>'>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Syne:wght@500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:        #1a1614;
+  --bg-2:      #221c19;
+  --surface:   rgba(255,255,255,0.06);
+  --surface-2: rgba(255,255,255,0.10);
+  --border:    rgba(255,255,255,0.12);
+  --text:      #f5efe8;
+  --text-2:    rgba(245,239,232,0.70);
+  --text-3:    rgba(245,239,232,0.45);
+  --accent:    #f97316;
+  --accent-2:  #be185d;
+  --good:      #34d399;
+  --bad:       #ef4444;
+  --warn:      #fbbf24;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; min-height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 14px;
+}
+.topbar {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 14px 22px;
+  border-bottom: 0.5px solid var(--border);
+}
+.brand { display: flex; align-items: center; gap: 12px; }
+.brand-mark {
+  width: 36px; height: 36px;
+  background: var(--accent); border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+}
+.brand-mark svg { width: 22px; height: 22px; }
+.brand h1 {
+  margin: 0; font-family: 'Syne', sans-serif; font-size: 20px;
+  font-weight: 700; letter-spacing: 0.3px;
+}
+.brand .sub { font-size: 11px; color: var(--text-3); margin-left: 8px; letter-spacing: 0.5px; }
+.logout {
+  background: transparent; border: 0.5px solid var(--border);
+  color: var(--text-2); padding: 7px 14px; border-radius: 999px;
+  font: inherit; cursor: pointer;
+}
+.logout:hover { color: var(--text); border-color: rgba(255,255,255,0.25); }
+
+.container { max-width: 1200px; margin: 0 auto; padding: 22px; }
+h2 {
+  font-family: 'Syne', sans-serif; font-weight: 600; margin: 28px 0 14px;
+  font-size: 18px;
+}
+
+.stats-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+.stat-card {
+  background: var(--surface); border: 0.5px solid var(--border);
+  border-radius: 14px; padding: 16px;
+}
+.stat-card .label {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px;
+  color: var(--text-3); font-weight: 600; margin-bottom: 6px;
+}
+.stat-card .value {
+  font-size: 28px; font-weight: 700; font-family: 'Syne', sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+.stat-card .sub { font-size: 11px; color: var(--text-3); margin-top: 4px; }
+
+table {
+  width: 100%; border-collapse: collapse;
+  background: var(--surface); border-radius: 14px; overflow: hidden;
+  border: 0.5px solid var(--border);
+}
+th, td {
+  text-align: left; padding: 10px 14px;
+  border-bottom: 0.5px solid var(--border);
+  font-size: 13px;
+}
+th {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px;
+  color: var(--text-3); font-weight: 600;
+  background: rgba(255,255,255,0.03);
+}
+tr:last-child td { border-bottom: none; }
+td.actions { text-align: right; white-space: nowrap; }
+td.mono, .mono { font-family: ui-monospace, monospace; font-size: 12px; color: var(--text-2); }
+.empty {
+  padding: 28px; text-align: center; color: var(--text-3); font-size: 13px;
+}
+.btn {
+  border: none; padding: 6px 12px; border-radius: 8px;
+  cursor: pointer; font: inherit; font-size: 12px; font-weight: 500;
+}
+.btn-ban   { background: var(--bad);  color: #fff; }
+.btn-unban { background: var(--good); color: #04341e; }
+.btn-ghost {
+  background: transparent; color: var(--text-2);
+  border: 0.5px solid var(--border);
+}
+.btn-ghost:hover { color: var(--text); }
+.reason-pill {
+  display: inline-block; padding: 3px 8px; border-radius: 999px;
+  font-size: 11px; font-weight: 500;
+  background: var(--surface-2);
+}
+.reason-pill.nudity { background: rgba(236,72,153,0.2); color: #f9a8d4; }
+.reason-pill.hate { background: rgba(239,68,68,0.2); color: #fca5a5; }
+.reason-pill.violence { background: rgba(239,68,68,0.25); color: #fecaca; }
+.reason-pill.minor { background: rgba(251,191,36,0.25); color: #fde68a; }
+.reason-pill.other { background: var(--surface-2); color: var(--text-2); }
+
+.country-row {
+  display: flex; justify-content: space-between;
+  padding: 6px 0; font-size: 13px;
+}
+.country-row .n { color: var(--text-2); font-variant-numeric: tabular-nums; }
+
+.toast {
+  position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(20px);
+  background: var(--bg-2); color: var(--text);
+  border: 0.5px solid var(--border);
+  padding: 10px 18px; border-radius: 999px;
+  font-size: 13px; opacity: 0;
+  transition: all .25s ease;
+  pointer-events: none;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+@media (max-width: 720px) {
+  .container { padding: 14px; }
+  table { font-size: 12px; }
+  th, td { padding: 8px 10px; }
+  td.mono { font-size: 11px; }
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <div class="brand-mark">
+      <svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+        <path d="M 10 36 L 10 12 L 38 36 L 38 12"
+              stroke="white" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <circle cx="38" cy="12" r="4.5" fill="#fbbf24"/>
+      </svg>
+    </div>
+    <h1>NexTalk <span class="sub">admin</span></h1>
+  </div>
+  <form action="/admin/logout" method="POST" style="margin:0;">
+    <button type="submit" class="logout">Sign out</button>
+  </form>
+</div>
+
+<div class="container">
+
+  <h2 style="margin-top: 0;">Overview</h2>
+  <div class="stats-grid" id="statsGrid"></div>
+
+  <h2>Top countries (last 7 days)</h2>
+  <div class="stat-card" id="countriesCard">
+    <div class="empty">Loading...</div>
+  </div>
+
+  <h2>Recent reports</h2>
+  <div id="reportsTable">
+    <div class="empty">Loading...</div>
+  </div>
+
+  <h2>Active bans</h2>
+  <div id="bansTable">
+    <div class="empty">Loading...</div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+let toastT;
+function toast(msg) {
+  const el = $('toast'); el.textContent = msg; el.classList.add('show');
+  clearTimeout(toastT);
+  toastT = setTimeout(() => el.classList.remove('show'), 2200);
+}
+function fmtTime(ts) {
+  const d = new Date(ts * 1000);
+  const now = new Date();
+  const diff = (now - d) / 1000;
+  if (diff < 60)     return Math.floor(diff) + 's ago';
+  if (diff < 3600)   return Math.floor(diff / 60) + 'm ago';
+  if (diff < 86400)  return Math.floor(diff / 3600) + 'h ago';
+  return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+}
+function fmtExpiry(ts) {
+  if (!ts) return 'permanent';
+  const diff = (ts - Date.now() / 1000);
+  if (diff <= 0) return 'expired';
+  if (diff < 3600)  return 'in ' + Math.floor(diff / 60) + 'm';
+  if (diff < 86400) return 'in ' + Math.floor(diff / 3600) + 'h';
+  return 'in ' + Math.floor(diff / 86400) + 'd';
+}
+function escapeHtml(s) {
+  if (s == null) return '';
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[c]));
+}
+function shortCid(cid) {
+  if (!cid) return '—';
+  return cid.length > 16 ? cid.slice(0, 8) + '…' + cid.slice(-4) : cid;
+}
+
+async function refreshAll() {
+  await Promise.all([refreshStats(), refreshReports(), refreshBans()]);
+}
+
+async function refreshStats() {
+  const r = await fetch('/admin/api/stats');
+  if (!r.ok) return;
+  const s = await r.json();
+
+  $('statsGrid').innerHTML = `
+    <div class="stat-card">
+      <div class="label">Matches today</div>
+      <div class="value">${s.matches_24h}</div>
+      <div class="sub">${s.matches_total} all time</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Reports today</div>
+      <div class="value">${s.reports_24h}</div>
+      <div class="sub">${s.reports_total} all time</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Active bans</div>
+      <div class="value">${s.active_bans}</div>
+      <div class="sub">manual + auto</div>
+    </div>
+  `;
+
+  // Countries
+  if (s.top_countries && s.top_countries.length) {
+    $('countriesCard').innerHTML = s.top_countries.map(c =>
+      `<div class="country-row">
+        <span>${escapeHtml(c.country)}</span>
+        <span class="n">${c.n}</span>
+      </div>`).join('');
+  } else {
+    $('countriesCard').innerHTML = '<div class="empty">No matches yet</div>';
+  }
+}
+
+async function refreshReports() {
+  const r = await fetch('/admin/api/reports?limit=100');
+  if (!r.ok) return;
+  const { reports } = await r.json();
+  if (!reports.length) {
+    $('reportsTable').innerHTML = '<div class="empty">No reports yet</div>';
+    return;
+  }
+  const rows = reports.map(r => `
+    <tr>
+      <td>${fmtTime(r.ts)}</td>
+      <td><span class="reason-pill ${escapeHtml(r.reason)}">${escapeHtml(r.reason)}</span></td>
+      <td class="mono">${shortCid(r.target_client_id)}</td>
+      <td class="mono">${shortCid(r.rater_client_id)}</td>
+      <td class="mono">${escapeHtml(r.rater_ip || '')}</td>
+      <td>${escapeHtml((r.details || '').slice(0, 60))}</td>
+      <td class="actions">
+        ${r.target_client_id ? `<button class="btn btn-ban" onclick="banUser('${escapeHtml(r.target_client_id)}', '', 'reported: ${escapeHtml(r.reason)}')">Ban</button>` : ''}
+      </td>
+    </tr>`).join('');
+  $('reportsTable').innerHTML = `
+    <table>
+      <thead><tr>
+        <th>When</th><th>Reason</th><th>Target</th><th>Reporter</th><th>IP</th><th>Details</th><th></th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+async function refreshBans() {
+  const r = await fetch('/admin/api/bans?limit=200');
+  if (!r.ok) return;
+  const { bans } = await r.json();
+  if (!bans.length) {
+    $('bansTable').innerHTML = '<div class="empty">No active bans</div>';
+    return;
+  }
+  const rows = bans.map(b => `
+    <tr>
+      <td>${fmtTime(b.banned_at)}</td>
+      <td class="mono">${shortCid(b.client_id)}</td>
+      <td class="mono">${escapeHtml(b.ip || '')}</td>
+      <td>${escapeHtml(b.reason || '')}</td>
+      <td>${escapeHtml(b.banned_by || '')}</td>
+      <td>${b.expires_at ? fmtExpiry(b.expires_at) : 'permanent'}</td>
+      <td class="actions">
+        <button class="btn btn-unban" onclick="unbanUser(${b.id})">Unban</button>
+      </td>
+    </tr>`).join('');
+  $('bansTable').innerHTML = `
+    <table>
+      <thead><tr>
+        <th>When</th><th>Client ID</th><th>IP</th><th>Reason</th><th>By</th><th>Expires</th><th></th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+async function banUser(cid, ip, reason) {
+  const hours = prompt('Ban duration in hours (leave empty = permanent):', '24');
+  if (hours === null) return;
+  const body = { client_id: cid, ip, reason };
+  if (hours.trim() !== '') body.duration_hours = parseFloat(hours);
+  const r = await fetch('/admin/api/ban', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (r.ok) { toast('Banned'); refreshAll(); }
+  else { toast('Ban failed'); }
+}
+
+async function unbanUser(ban_id) {
+  if (!confirm('Lift this ban?')) return;
+  const r = await fetch('/admin/api/unban', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ban_id }),
+  });
+  if (r.ok) { toast('Unbanned'); refreshAll(); }
+  else { toast('Unban failed'); }
+}
+
+refreshAll();
+setInterval(refreshAll, 15000);  // auto-refresh every 15s
+</script>
+</body>
+</html>

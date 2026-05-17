@@ -1,4 +1,4 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, constr
@@ -7,6 +7,9 @@ from collections import defaultdict, deque
 from pathlib import Path
 import asyncio, base64, hashlib, hmac, json, logging, os, secrets, time
 import urllib.parse, urllib.request
+
+from . import db
+from .admin import router as admin_router
 
 # Load .env (if present) BEFORE any os.getenv() call below.
 # python-dotenv is optional — code works fine without it, you just have to
@@ -21,6 +24,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI()
+app.include_router(admin_router)
 
 # ── CONFIG ───────────────────────────────────────────────────────
 MAX_PICKY_WAIT_SEC   = 10.0
@@ -102,12 +106,17 @@ class ReportPayload(BaseModel):
     rater_client_id: constr(strip_whitespace=True, max_length=64) = ""
 
 @app.post("/report")
-async def submit_report(payload: ReportPayload):
+async def submit_report(payload: ReportPayload, request: Request):
     # Figure out who is being reported via the room pairing.
     target_cid = ""
     pair = room_pairs.get(payload.room)
     if pair and payload.rater_client_id in pair:
         target_cid = pair[0] if pair[1] == payload.rater_client_id else pair[1]
+
+    rater_ip = request.client.host if request.client else ""
+    xff = request.headers.get("x-forwarded-for", "")
+    if xff:
+        rater_ip = xff.split(",")[0].strip()
 
     entry = {
         "room": payload.room,
@@ -117,11 +126,21 @@ async def submit_report(payload: ReportPayload):
         "target_client_id": target_cid,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+    # Keep the jsonl file as a backup audit log
     try:
         with REPORTS_FILE.open("a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
     except OSError as e:
         logger.error(f"Could not persist report: {e}")
+    # And insert into SQLite for the admin dashboard
+    try:
+        db.insert_report(
+            room=payload.room, reason=payload.reason, details=payload.details,
+            rater_client_id=payload.rater_client_id,
+            target_client_id=target_cid, rater_ip=rater_ip,
+        )
+    except Exception as e:
+        logger.error(f"DB insert_report failed: {e}")
     logger.warning(f"REPORT: {entry}")
 
     banned = record_report_against(target_cid, payload.reason) if target_cid else False
@@ -334,6 +353,16 @@ async def try_match(ws: WebSocket, profile: dict):
                 "room": room_id, "peer": public_profile(partner_profile),
             })
             logger.info(f"Matched room {room_id} (score={best_score})")
+            # Log to DB for analytics
+            try:
+                db.session_start(
+                    room=room_id,
+                    cid_a=my_cid, cid_b=their_cid,
+                    country_a=profile.get("country_code", ""),
+                    country_b=partner_profile.get("country_code", ""),
+                )
+            except Exception as e:
+                logger.error(f"DB session_start failed: {e}")
             return
         except Exception as e:
             logger.warning(f"Match send failed: {e}")
@@ -362,6 +391,10 @@ def cleanup_room_for(ws: WebSocket):
             del rooms[rid]
             room_pairs.pop(rid, None)
             logger.info(f"Closed room {rid}")
+            try:
+                db.session_end(rid)
+            except Exception as e:
+                logger.error(f"DB session_end failed: {e}")
             return peer
     return None
 
@@ -441,6 +474,14 @@ def record_report_against(cid: str, reason: str) -> bool:
                 }, ensure_ascii=False) + "\n")
         except OSError as e:
             logger.error(f"Could not persist ban: {e}")
+        # Mirror into SQLite for the admin dashboard
+        try:
+            db.insert_ban(
+                client_id=cid, reason=f"auto: {reason}",
+                duration_sec=BAN_DURATION_SEC, banned_by="auto",
+            )
+        except Exception as e:
+            logger.error(f"DB insert_ban failed: {e}")
         logger.warning(f"AUTO-BAN: {cid} until {banned_cids[cid]}")
         return True
     return False
@@ -534,7 +575,7 @@ async def websocket_endpoint(ws: WebSocket):
                     "country_name": str(msg.get("country_name", ""))[:60],
                     "client_id": str(msg.get("client_id", ""))[:64],
                 }
-                # Refuse to match banned clients
+                # Refuse to match banned clients (auto-ban: in-memory)
                 if is_banned(profile["client_id"]):
                     expires_at = banned_cids.get(profile["client_id"], 0)
                     try:
@@ -542,6 +583,22 @@ async def websocket_endpoint(ws: WebSocket):
                             "type": "banned",
                             "expires_at": expires_at,
                             "msg": "You've been temporarily blocked after multiple reports.",
+                        })
+                    except Exception:
+                        pass
+                    continue
+                # Admin-set ban check (in DB by cid or IP)
+                try:
+                    admin_ban = db.is_banned(client_id=profile["client_id"], ip=ip)
+                except Exception as e:
+                    logger.error(f"DB ban check failed: {e}")
+                    admin_ban = None
+                if admin_ban:
+                    try:
+                        await ws.send_json({
+                            "type": "banned",
+                            "expires_at": admin_ban.get("expires_at") or 0,
+                            "msg": admin_ban.get("reason") or "You've been blocked.",
                         })
                     except Exception:
                         pass
