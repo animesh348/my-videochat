@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Community Guidelines — NexTalk</title>
+<link rel="icon" type="image/svg+xml" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><rect width="48" height="48" rx="11" fill="%23f97316"/><path d="M 10 36 L 10 12 L 38 36 L 38 12" stroke="white" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="38" cy="12" r="4.5" fill="%23fbbf24"/></svg>'>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Syne:wght@500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:        #1a1614;
+  --bg-2:      #221c19;
+  --surface:   rgba(255,255,255,0.06);
+  --border:    rgba(255,255,255,0.12);
+  --text:      #f5efe8;
+  --text-2:    rgba(245,239,232,0.75);
+  --text-3:    rgba(245,239,232,0.45);
+  --accent:    #f97316;
+  --accent-2:  #be185d;
+  --warn:      #fbbf24;
+  --bad:       #ef4444;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; min-height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+/* Background decor */
+.bg-decor { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+.bg-orb { position: absolute; border-radius: 50%; filter: blur(70px); opacity: 0.35; }
+.bg-orb-1 { top: -150px; left: -120px; width: 460px; height: 460px;
+  background: radial-gradient(circle, var(--accent) 0%, transparent 65%); }
+.bg-orb-2 { bottom: -180px; right: -140px; width: 520px; height: 520px;
+  background: radial-gradient(circle, var(--accent-2) 0%, transparent 65%); }
+
+/* Top bar */
+.topbar {
+  position: relative; z-index: 2;
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 16px 22px;
+  border-bottom: 0.5px solid var(--border);
+}
+.brand { display: flex; align-items: center; gap: 12px; text-decoration: none; color: inherit; }
+.brand-mark {
+  width: 36px; height: 36px;
+  background: var(--accent); border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 6px 16px rgba(249,115,22,0.3);
+}
+.brand-mark svg { width: 22px; height: 22px; }
+.brand h1 {
+  margin: 0; font-family: 'Syne', sans-serif; font-size: 20px;
+  font-weight: 700; letter-spacing: 0.3px;
+}
+.back-link {
+  font-size: 13px; color: var(--text-2);
+  text-decoration: none; padding: 7px 14px;
+  border: 0.5px solid var(--border); border-radius: 999px;
+}
+.back-link:hover { color: var(--text); border-color: rgba(255,255,255,0.25); }
+
+/* Content */
+.container {
+  position: relative; z-index: 2;
+  max-width: 740px; margin: 0 auto; padding: 40px 22px 80px;
+}
+h2 {
+  font-family: 'Syne', sans-serif; font-weight: 700;
+  font-size: 32px; letter-spacing: 0.3px;
+  margin: 0 0 8px;
+}
+.subtitle {
+  color: var(--text-2); font-size: 15px;
+  margin-bottom: 36px;
+}
+h3 {
+  font-family: 'Syne', sans-serif; font-weight: 600;
+  font-size: 18px; margin: 28px 0 8px;
+  display: flex; align-items: center; gap: 10px;
+}
+h3 .num {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px;
+  background: var(--accent); color: #1a1614;
+  border-radius: 8px; font-weight: 700; font-size: 14px;
+  font-family: 'DM Sans', sans-serif;
+}
+p { color: var(--text-2); margin: 0 0 14px; }
+.divider {
+  border: none; border-top: 0.5px solid var(--border);
+  margin: 40px 0;
+}
+.callout {
+  background: var(--surface);
+  border: 0.5px solid var(--border);
+  border-radius: 14px;
+  padding: 20px 22px;
+  margin: 24px 0;
+}
+.callout h4 {
+  margin: 0 0 8px; font-family: 'Syne', sans-serif;
+  font-size: 15px; font-weight: 600;
+}
+.callout ul { margin: 0; padding-left: 22px; color: var(--text-2); }
+.callout li { margin-bottom: 6px; }
+
+.contact-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px; margin-top: 14px;
+}
+.contact-item {
+  background: var(--surface); border: 0.5px solid var(--border);
+  border-radius: 12px; padding: 14px 16px;
+  display: flex; align-items: center; gap: 12px;
+  text-decoration: none; color: var(--text);
+  transition: border-color .15s;
+}
+.contact-item:hover { border-color: var(--accent); }
+.contact-item .ico {
+  width: 36px; height: 36px;
+  background: var(--accent); border-radius: 9px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.contact-item .ico svg { width: 18px; height: 18px; }
+.contact-item .label {
+  font-size: 11px; text-transform: uppercase;
+  letter-spacing: 0.6px; color: var(--text-3); font-weight: 600;
+}
+.contact-item .val { font-size: 13px; font-weight: 500; }
+
+.footer-note {
+  margin-top: 50px; padding-top: 24px;
+  border-top: 0.5px solid var(--border);
+  font-size: 12px; color: var(--text-3); text-align: center;
+}
+strong { color: var(--text); font-weight: 600; }
+
+@media (max-width: 720px) {
+  .container { padding: 28px 18px 60px; }
+  h2 { font-size: 26px; }
+  h3 { font-size: 16px; }
+}
+</style>
+</head>
+<body>
+
+<div class="bg-decor" aria-hidden="true">
+  <div class="bg-orb bg-orb-1"></div>
+  <div class="bg-orb bg-orb-2"></div>
+</div>
+
+<div class="topbar">
+  <a href="/" class="brand">
+    <div class="brand-mark">
+      <svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+        <path d="M 10 36 L 10 12 L 38 36 L 38 12"
+              stroke="white" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <circle cx="38" cy="12" r="4.5" fill="#fbbf24"/>
+      </svg>
+    </div>
+    <h1>NexTalk</h1>
+  </a>
+  <a href="/" class="back-link">← Back to chat</a>
+</div>
+
+<div class="container">
+  <h2>Community Guidelines</h2>
+  <p class="subtitle">NexTalk connects strangers around the world for video chat. To keep it safe and fun for everyone, please follow these rules.</p>
+
+  <h3><span class="num">1</span>You must be 18 or older</h3>
+  <p>NexTalk is strictly for adults. If you are under 18, please leave now. We use age verification and report any suspected underage users to authorities.</p>
+
+  <h3><span class="num">2</span>No nudity or sexual content</h3>
+  <p>Don't expose yourself, perform sexual acts, or display sexual material. This applies even if the other person consents. Violators are banned immediately.</p>
+
+  <h3><span class="num">3</span>No harassment, hate, or threats</h3>
+  <p>Don't insult people based on race, religion, gender, sexuality, nationality, disability, or appearance. Don't threaten violence. Don't bully. Be kind.</p>
+
+  <h3><span class="num">4</span>No violence or harmful content</h3>
+  <p>No real or simulated violence, self-harm, weapons, blood, gore, or anything designed to disturb. If you're in crisis, please call a local helpline.</p>
+
+  <h3><span class="num">5</span>No illegal activity</h3>
+  <p>Drugs, weapon trafficking, fraud, hacking, doxxing, sharing minors' images, and any other illegal content is forbidden.</p>
+
+  <h3><span class="num">6</span>No spam or scams</h3>
+  <p>Don't advertise, sell, beg for money, share crypto wallets, or push outside links. Don't pretend to be someone you're not for financial gain.</p>
+
+  <h3><span class="num">7</span>Respect privacy</h3>
+  <p>Don't record, screenshot, or share other people's video, voice, or personal info without their consent. Don't dox.</p>
+
+  <h3><span class="num">8</span>No deepfakes or fake identities</h3>
+  <p>Don't use AI-generated faces, prerecorded videos, or fake personas to deceive others.</p>
+
+  <h3><span class="num">9</span>Use the report button</h3>
+  <p>If someone breaks these rules, use the Report button. We review every report. Multiple reports lead to bans.</p>
+
+  <h3><span class="num">10</span>We may ban without warning</h3>
+  <p>Serious violations (nudity, threats, minors, illegal activity) result in immediate permanent bans. We may share information with law enforcement when required by law.</p>
+
+  <hr class="divider" />
+
+  <div class="callout">
+    <h4>How we enforce these rules</h4>
+    <ul>
+      <li><strong>Auto-bans:</strong> Three reports within 24 hours triggers an automatic 24-hour ban.</li>
+      <li><strong>Manual review:</strong> Admins review all reports and may issue permanent bans.</li>
+      <li><strong>No appeals for serious violations:</strong> Nudity, minor safety, and illegal content bans are final.</li>
+    </ul>
+  </div>
+
+  <h3 style="margin-top: 40px;">Contact us</h3>
+  <p>For appeals, support, or law enforcement requests:</p>
+  <div class="contact-grid">
+    <a href="mailto:nextalk.support@gmail.com" class="contact-item">
+      <div class="ico">
+        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+          <polyline points="22,6 12,13 2,6"/>
+        </svg>
+      </div>
+      <div>
+        <div class="label">Email</div>
+        <div class="val">nextalk.support@gmail.com</div>
+      </div>
+    </a>
+    <a href="https://instagram.com/nextalk.app" target="_blank" rel="noopener" class="contact-item">
+      <div class="ico">
+        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
+          <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/>
+          <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/>
+        </svg>
+      </div>
+      <div>
+        <div class="label">Instagram</div>
+        <div class="val">@nextalk.app</div>
+      </div>
+    </a>
+  </div>
+
+  <div class="footer-note">
+    Last updated: May 17, 2026 · NexTalk is operated by its creators with safety as a priority.
+  </div>
+</div>
+
+</body>
+</html>
