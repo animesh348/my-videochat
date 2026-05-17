@@ -435,7 +435,7 @@ video {
 /* ── Setup screen (before Start) ────────────────────────────── */
 .setup-screen {
   position: fixed; inset: 0; z-index: 1000;
-  background: transparent;
+  background: var(--bg);
   display: flex; align-items: flex-start; justify-content: center;
   padding: 40px 22px;
   overflow-y: auto;
