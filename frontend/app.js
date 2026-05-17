@@ -988,16 +988,59 @@ function closeReport() { document.getElementById('reportModal').classList.remove
 function submitReport() {
   const reason = document.getElementById('reportReason').value;
   if (!reason) { toast('Select a reason first'); return; }
-  fetch('/report',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({
-      room: roomId,
-      reason,
-      details: document.getElementById('reportDetails').value,
-      rater_client_id: clientId,
-    })
-  }).catch(()=>{});
+  const details = document.getElementById('reportDetails').value || '';
+  const room    = roomId;
+  const rater   = clientId;
+
+  // Try to capture a snapshot of the remote video. If anything goes wrong
+  // we still submit the report (text-only) — never block the user.
+  let blob = null;
+  try {
+    const v = document.getElementById('remote');
+    if (v && v.videoWidth > 0 && v.videoHeight > 0) {
+      const maxW = 640;
+      const scale = Math.min(1, maxW / v.videoWidth);
+      const w = Math.round(v.videoWidth * scale);
+      const h = Math.round(v.videoHeight * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(v, 0, 0, w, h);
+      // toBlob is async; chain submission after it resolves
+      canvas.toBlob((b) => { _sendReport({ room, reason, details, rater, blob: b }); }, 'image/jpeg', 0.7);
+      // We'll close UI immediately so user doesn't wait
+      closeReport();
+      toast('Reported. Skipping...');
+      sysMsg('You reported this user.');
+      setTimeout(nextMatch, 800);
+      return;
+    }
+  } catch (e) {
+    console.warn('[NexTalk] snapshot failed:', e);
+  }
+
+  // Fallback: no snapshot, send JSON
+  _sendReport({ room, reason, details, rater, blob: null });
   closeReport(); toast('Reported. Skipping...'); sysMsg('You reported this user.');
   setTimeout(nextMatch, 800);
+}
+
+function _sendReport({ room, reason, details, rater, blob }) {
+  if (blob) {
+    const fd = new FormData();
+    fd.append('room', room || '');
+    fd.append('reason', reason);
+    fd.append('details', details);
+    fd.append('rater_client_id', rater);
+    fd.append('snapshot', blob, 'snapshot.jpg');
+    fetch('/report', { method: 'POST', body: fd }).catch(() => {});
+  } else {
+    fetch('/report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ room, reason, details, rater_client_id: rater }),
+    }).catch(() => {});
+  }
 }
 function blockUser() {
   if (!roomId){toast('No active session');return;}

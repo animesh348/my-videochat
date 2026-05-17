@@ -178,7 +178,7 @@ body {
 /* ── Video wrap ─────────────────────────────────────────────── */
 .video-wrap {
   position: relative;
-  background: linear-gradient(135deg, #2d1f1c 0%, #3d2a26 100%);
+  background: linear-gradient(135deg, #1f1411 0%, #2a1916 100%);
   border-radius: var(--radius-lg);
   overflow: hidden;
   min-height: 0;
@@ -187,7 +187,15 @@ video {
   width: 100%; height: 100%; object-fit: cover; background: #000;
   display: block;
 }
-#remote { width: 100%; height: 100%; }
+/* Remote uses CONTAIN so vertical mobile video isn't extreme-zoomed.
+   Promote to its own layer so resize/track-change doesn't repaint siblings. */
+#remote {
+  width: 100%; height: 100%;
+  object-fit: contain;
+  background: #000;
+  transform: translateZ(0);
+  will-change: transform;
+}
 
 /* Self preview */
 .self-preview {
@@ -202,10 +210,15 @@ video {
   background: #000;
   z-index: 9;
   transition: transform .2s ease;
+  contain: layout paint;
 }
-.self-preview:hover { transform: scale(1.02); }
-.self-preview video { transform: scaleX(-1); }
-.self-preview.back-cam video { transform: none; }
+.self-preview video {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1) translateZ(0);
+  will-change: transform;
+}
+.self-preview.back-cam video { transform: translateZ(0); }
 .self-label {
   position: absolute; bottom: 6px; left: 6px;
   background: rgba(0,0,0,0.5); backdrop-filter: blur(10px);

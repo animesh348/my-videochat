@@ -191,3 +191,46 @@ async def api_unban(request: Request):
         return JSONResponse({"error": "ban_id required"}, status_code=400)
     ok = db.unban(ban_id)
     return {"ok": ok}
+
+
+@router.post("/api/delete-snapshot")
+async def api_delete_snapshot(request: Request):
+    """Remove the snapshot file for a report; keep the report row itself."""
+    require_admin(request)
+    body = await request.json()
+    report_id = int(body.get("report_id", 0))
+    if not report_id:
+        return JSONResponse({"error": "report_id required"}, status_code=400)
+    fname = db.clear_report_snapshot(report_id)
+    deleted = False
+    if fname:
+        # Snapshots live in same dir as defined in main.SNAPSHOTS_DIR
+        snap_dir = Path(os.getenv("NEXTALK_SNAPSHOTS_DIR", "report_snapshots"))
+        path = snap_dir / fname
+        try:
+            if path.exists():
+                path.unlink()
+                deleted = True
+        except Exception:
+            pass
+    return {"ok": True, "deleted": deleted}
+
+
+@router.post("/api/delete-report")
+async def api_delete_report(request: Request):
+    """Delete a report row + its snapshot file."""
+    require_admin(request)
+    body = await request.json()
+    report_id = int(body.get("report_id", 0))
+    if not report_id:
+        return JSONResponse({"error": "report_id required"}, status_code=400)
+    fname = db.delete_report(report_id)
+    if fname:
+        snap_dir = Path(os.getenv("NEXTALK_SNAPSHOTS_DIR", "report_snapshots"))
+        path = snap_dir / fname
+        try:
+            if path.exists():
+                path.unlink()
+        except Exception:
+            pass
+    return {"ok": True}

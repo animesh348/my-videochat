@@ -123,6 +123,43 @@ td.mono, .mono { font-family: ui-monospace, monospace; font-size: 12px; color: v
 .reason-pill.minor { background: rgba(251,191,36,0.25); color: #fde68a; }
 .reason-pill.other { background: var(--surface-2); color: var(--text-2); }
 
+.thumb {
+  width: 48px; height: 48px; border-radius: 6px;
+  object-fit: cover; cursor: pointer;
+  border: 0.5px solid var(--border);
+  background: #000;
+  transition: transform .15s;
+}
+.thumb:hover { transform: scale(1.08); }
+.thumb-empty {
+  width: 48px; height: 48px; border-radius: 6px;
+  background: rgba(255,255,255,0.04);
+  border: 0.5px dashed var(--border);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-3); font-size: 11px;
+}
+
+/* Lightbox */
+.lightbox {
+  position: fixed; inset: 0; z-index: 500;
+  background: rgba(0,0,0,0.85); backdrop-filter: blur(6px);
+  display: none; align-items: center; justify-content: center;
+  padding: 32px;
+  cursor: zoom-out;
+}
+.lightbox.open { display: flex; }
+.lightbox img {
+  max-width: 100%; max-height: 80vh;
+  border-radius: 12px; box-shadow: 0 12px 60px rgba(0,0,0,0.7);
+}
+.lightbox-actions {
+  position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%);
+  display: flex; gap: 8px;
+}
+.lightbox-actions .btn {
+  padding: 9px 16px; font-size: 13px;
+}
+
 .country-row {
   display: flex; justify-content: space-between;
   padding: 6px 0; font-size: 13px;
@@ -189,6 +226,16 @@ td.mono, .mono { font-family: ui-monospace, monospace; font-size: 12px; color: v
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- Lightbox for snapshot zoom + delete -->
+<div class="lightbox" id="lightbox" onclick="if(event.target.id==='lightbox')closeLightbox()">
+  <img id="lightboxImg" alt="snapshot" />
+  <div class="lightbox-actions">
+    <button class="btn btn-ghost" onclick="closeLightbox()">Close</button>
+    <button class="btn btn-unban" onclick="deleteSnapshotOnly()">Delete photo only</button>
+    <button class="btn btn-ban" onclick="deleteReportFromLightbox()">Delete report + photo</button>
+  </div>
+</div>
 
 <script>
 const $ = id => document.getElementById(id);
@@ -271,8 +318,13 @@ async function refreshReports() {
     $('reportsTable').innerHTML = '<div class="empty">No reports yet</div>';
     return;
   }
-  const rows = reports.map(r => `
-    <tr>
+  const rows = reports.map(r => {
+    const snap = r.snapshot_path
+      ? `<img class="thumb" src="/report-snapshot/${escapeHtml(r.snapshot_path)}" onclick="openLightbox(${r.id}, '${escapeHtml(r.snapshot_path)}')" alt="snapshot"/>`
+      : `<div class="thumb-empty">none</div>`;
+    return `
+    <tr id="report-row-${r.id}">
+      <td>${snap}</td>
       <td>${fmtTime(r.ts)}</td>
       <td><span class="reason-pill ${escapeHtml(r.reason)}">${escapeHtml(r.reason)}</span></td>
       <td class="mono">${shortCid(r.target_client_id)}</td>
@@ -280,13 +332,15 @@ async function refreshReports() {
       <td class="mono">${escapeHtml(r.rater_ip || '')}</td>
       <td>${escapeHtml((r.details || '').slice(0, 60))}</td>
       <td class="actions">
-        ${r.target_client_id ? `<button class="btn btn-ban" onclick="banUser('${escapeHtml(r.target_client_id)}', '', 'reported: ${escapeHtml(r.reason)}')">Ban</button>` : ''}
+        ${r.target_client_id ? `<button class="btn btn-ban" onclick="banUser('${escapeHtml(r.target_client_id)}', '${escapeHtml(r.rater_ip || '')}', 'reported: ${escapeHtml(r.reason)}')">Ban</button>` : ''}
+        <button class="btn btn-ghost" onclick="deleteReport(${r.id})" title="Delete this report">×</button>
       </td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
   $('reportsTable').innerHTML = `
     <table>
       <thead><tr>
-        <th>When</th><th>Reason</th><th>Target</th><th>Reporter</th><th>IP</th><th>Details</th><th></th>
+        <th>Snap</th><th>When</th><th>Reason</th><th>Target</th><th>Reporter</th><th>IP</th><th>Details</th><th></th>
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
@@ -343,6 +397,53 @@ async function unbanUser(ban_id) {
   if (r.ok) { toast('Unbanned'); refreshAll(); }
   else { toast('Unban failed'); }
 }
+
+// ── Lightbox + snapshot deletion ──────────────────────────────
+let _lightboxReportId = null;
+function openLightbox(reportId, filename) {
+  _lightboxReportId = reportId;
+  $('lightboxImg').src = '/report-snapshot/' + encodeURIComponent(filename);
+  $('lightbox').classList.add('open');
+}
+function closeLightbox() {
+  $('lightbox').classList.remove('open');
+  $('lightboxImg').src = '';
+  _lightboxReportId = null;
+}
+async function deleteSnapshotOnly() {
+  if (!_lightboxReportId) return;
+  if (!confirm('Delete the photo only? The report row stays for the audit trail.')) return;
+  const r = await fetch('/admin/api/delete-snapshot', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ report_id: _lightboxReportId }),
+  });
+  if (r.ok) { toast('Photo deleted'); closeLightbox(); refreshReports(); }
+  else { toast('Delete failed'); }
+}
+async function deleteReportFromLightbox() {
+  if (!_lightboxReportId) return;
+  if (!confirm('Delete this entire report (and its photo)? This cannot be undone.')) return;
+  const r = await fetch('/admin/api/delete-report', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ report_id: _lightboxReportId }),
+  });
+  if (r.ok) { toast('Report deleted'); closeLightbox(); refreshReports(); }
+  else { toast('Delete failed'); }
+}
+async function deleteReport(reportId) {
+  if (!confirm('Delete this report?')) return;
+  const r = await fetch('/admin/api/delete-report', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ report_id: reportId }),
+  });
+  if (r.ok) { toast('Deleted'); refreshReports(); }
+  else { toast('Delete failed'); }
+}
+
+// Escape closes lightbox
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeLightbox();
+});
 
 refreshAll();
 setInterval(refreshAll, 15000);  // auto-refresh every 15s

@@ -1,12 +1,13 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel, constr
 from datetime import datetime, timezone
 from collections import defaultdict, deque
 from pathlib import Path
 import asyncio, base64, hashlib, hmac, json, logging, os, secrets, time
 import urllib.parse, urllib.request
+from typing import Optional
 
 from . import db
 from .admin import router as admin_router
@@ -33,6 +34,9 @@ MAX_CHAT_LEN         = 2000          # max chars per chat message
 MAX_MSGS_PER_10S     = 60            # per-connection rate limit
 RATE_GRANT_TTL_SEC   = 60 * 60       # how long a rating right stays valid after match
 REPORTS_FILE         = Path("reports.jsonl")
+SNAPSHOTS_DIR        = Path(os.getenv("NEXTALK_SNAPSHOTS_DIR", "report_snapshots"))
+SNAPSHOTS_DIR.mkdir(exist_ok=True)
+MAX_SNAPSHOT_BYTES   = 600 * 1024   # 600 KB cap
 
 # Per-IP gates (defeats trivial spam from one machine)
 IP_MAX_CONCURRENT    = 5             # simultaneous WS connections per IP
@@ -106,45 +110,111 @@ class ReportPayload(BaseModel):
     rater_client_id: constr(strip_whitespace=True, max_length=64) = ""
 
 @app.post("/report")
-async def submit_report(payload: ReportPayload, request: Request):
-    # Figure out who is being reported via the room pairing.
+async def submit_report(request: Request):
+    """
+    Accept reports as either JSON (legacy) or multipart/form-data
+    (with an optional 'snapshot' file). Saves the snapshot to disk,
+    inserts a DB row, and triggers auto-ban logic.
+    """
+    ctype = (request.headers.get("content-type") or "").lower()
+    room = reason = details = rater_client_id = ""
+    snapshot_bytes: Optional[bytes] = None
+
+    if "multipart/form-data" in ctype:
+        form = await request.form()
+        room            = str(form.get("room", ""))[:64]
+        reason          = str(form.get("reason", ""))[:40]
+        details         = str(form.get("details", ""))[:500]
+        rater_client_id = str(form.get("rater_client_id", ""))[:64]
+        upload = form.get("snapshot")
+        if upload is not None and hasattr(upload, "read"):
+            data = await upload.read()
+            if len(data) <= MAX_SNAPSHOT_BYTES and data[:3] in (b"\xff\xd8\xff", b"\x89PN"):
+                snapshot_bytes = data
+            else:
+                logger.warning(f"Snapshot rejected (size={len(data)} or bad magic)")
+    else:
+        # JSON body (legacy / no snapshot)
+        try:
+            body = await request.json()
+        except Exception:
+            return JSONResponse({"status": "error", "msg": "bad body"}, status_code=400)
+        room            = str(body.get("room", ""))[:64]
+        reason          = str(body.get("reason", ""))[:40]
+        details         = str(body.get("details", ""))[:500]
+        rater_client_id = str(body.get("rater_client_id", ""))[:64]
+
+    if not reason:
+        return JSONResponse({"status": "error", "msg": "reason required"}, status_code=400)
+
+    # Figure out who is being reported via the room pairing
     target_cid = ""
-    pair = room_pairs.get(payload.room)
-    if pair and payload.rater_client_id in pair:
-        target_cid = pair[0] if pair[1] == payload.rater_client_id else pair[1]
+    pair = room_pairs.get(room)
+    if pair and rater_client_id in pair:
+        target_cid = pair[0] if pair[1] == rater_client_id else pair[1]
 
     rater_ip = request.client.host if request.client else ""
     xff = request.headers.get("x-forwarded-for", "")
     if xff:
         rater_ip = xff.split(",")[0].strip()
 
+    # Insert report into DB first to get its id (for the snapshot filename)
+    try:
+        report_id = db.insert_report(
+            room=room, reason=reason, details=details,
+            rater_client_id=rater_client_id,
+            target_client_id=target_cid, rater_ip=rater_ip,
+        )
+    except Exception as e:
+        logger.error(f"DB insert_report failed: {e}")
+        report_id = 0
+
+    # Save snapshot to disk and attach path to the DB row
+    if snapshot_bytes and report_id:
+        ext = "jpg" if snapshot_bytes[:3] == b"\xff\xd8\xff" else "png"
+        fname = f"r{report_id}.{ext}"
+        try:
+            (SNAPSHOTS_DIR / fname).write_bytes(snapshot_bytes)
+            db.set_report_snapshot(report_id, fname)
+        except Exception as e:
+            logger.error(f"Snapshot save failed: {e}")
+
+    # Audit log (jsonl)
     entry = {
-        "room": payload.room,
-        "reason": payload.reason,
-        "details": payload.details,
-        "rater_client_id": payload.rater_client_id,
+        "id": report_id,
+        "room": room,
+        "reason": reason,
+        "details": details,
+        "rater_client_id": rater_client_id,
         "target_client_id": target_cid,
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        "has_snapshot": bool(snapshot_bytes),
     }
-    # Keep the jsonl file as a backup audit log
     try:
         with REPORTS_FILE.open("a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
     except OSError as e:
         logger.error(f"Could not persist report: {e}")
-    # And insert into SQLite for the admin dashboard
-    try:
-        db.insert_report(
-            room=payload.room, reason=payload.reason, details=payload.details,
-            rater_client_id=payload.rater_client_id,
-            target_client_id=target_cid, rater_ip=rater_ip,
-        )
-    except Exception as e:
-        logger.error(f"DB insert_report failed: {e}")
     logger.warning(f"REPORT: {entry}")
 
-    banned = record_report_against(target_cid, payload.reason) if target_cid else False
-    return JSONResponse({"status": "received", "target_banned": banned})
+    banned = record_report_against(target_cid, reason) if target_cid else False
+    return JSONResponse({"status": "received", "target_banned": banned, "id": report_id})
+
+
+# Serve a snapshot file (admin-only — re-uses the same cookie check used by admin routes)
+@app.get("/report-snapshot/{filename}")
+async def get_report_snapshot(filename: str, request: Request):
+    from .admin import is_admin
+    if not is_admin(request):
+        return JSONResponse({"error": "not authorized"}, status_code=401)
+    # Strict filename validation: only r<digits>.<ext>
+    import re
+    if not re.fullmatch(r"r\d+\.(jpg|png)", filename):
+        return JSONResponse({"error": "bad filename"}, status_code=400)
+    path = SNAPSHOTS_DIR / filename
+    if not path.exists():
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return FileResponse(path, media_type="image/jpeg" if filename.endswith(".jpg") else "image/png")
 
 
 # ── RATING ENDPOINT ─────────────────────────────────────────────

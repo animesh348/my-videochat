@@ -52,7 +52,8 @@ def _create_schema(c: sqlite3.Connection) -> None:
             details         TEXT,
             rater_client_id TEXT,
             target_client_id TEXT,
-            rater_ip        TEXT
+            rater_ip        TEXT,
+            snapshot_path   TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_reports_ts     ON reports(ts);
         CREATE INDEX IF NOT EXISTS idx_reports_target ON reports(target_client_id);
@@ -82,6 +83,13 @@ def _create_schema(c: sqlite3.Connection) -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_sessions_started ON sessions(started_at);
     """)
+    # Migration: add snapshot_path to existing reports table if missing
+    try:
+        cols = [r[1] for r in c.execute("PRAGMA table_info(reports)").fetchall()]
+        if "snapshot_path" not in cols:
+            c.execute("ALTER TABLE reports ADD COLUMN snapshot_path TEXT")
+    except Exception:
+        pass
 
 
 # ── Reports ─────────────────────────────────────────────────────
@@ -114,6 +122,47 @@ def reports_against(target_client_id: str, since_ts: float) -> int:
             (target_client_id, since_ts),
         ).fetchone()
     return int(row["n"] or 0)
+
+
+def set_report_snapshot(report_id: int, snapshot_filename: str) -> None:
+    with _lock:
+        _get().execute(
+            "UPDATE reports SET snapshot_path = ? WHERE id = ?",
+            (snapshot_filename, report_id),
+        )
+
+
+def get_report_snapshot(report_id: int) -> Optional[str]:
+    with _lock:
+        row = _get().execute(
+            "SELECT snapshot_path FROM reports WHERE id = ?", (report_id,)
+        ).fetchone()
+    return row["snapshot_path"] if row else None
+
+
+def clear_report_snapshot(report_id: int) -> Optional[str]:
+    """Remove the snapshot_path reference and return the old filename (caller deletes the file)."""
+    with _lock:
+        row = _get().execute(
+            "SELECT snapshot_path FROM reports WHERE id = ?", (report_id,)
+        ).fetchone()
+        old = row["snapshot_path"] if row else None
+        if old:
+            _get().execute(
+                "UPDATE reports SET snapshot_path = NULL WHERE id = ?", (report_id,)
+            )
+    return old
+
+
+def delete_report(report_id: int) -> Optional[str]:
+    """Delete a report row. Returns its snapshot filename if any (caller deletes the file)."""
+    with _lock:
+        row = _get().execute(
+            "SELECT snapshot_path FROM reports WHERE id = ?", (report_id,)
+        ).fetchone()
+        old = row["snapshot_path"] if row else None
+        _get().execute("DELETE FROM reports WHERE id = ?", (report_id,))
+    return old
 
 
 # ── Bans ────────────────────────────────────────────────────────
